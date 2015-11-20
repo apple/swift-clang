@@ -48,9 +48,10 @@ if(LLVM_BUILD_EXTERNAL_COMPILER_RT AND EXISTS ${COMPILER_RT_SRC_ROOT}/)
   # them.
   get_cmake_property(variableNames VARIABLES)
   foreach(varaibleName ${variableNames})
-    if(${varaibleName} MATCHES "^COMPILER_RT")
+    if(varaibleName MATCHES "^COMPILER_RT")
+      string(REPLACE ";" "\;" value "${${varaibleName}}")
       list(APPEND COMPILER_RT_PASSTHROUGH_VARIABLES
-        -D${varaibleName}=${${varaibleName}})
+        -D${varaibleName}=${${value}})
     endif()
   endforeach()
 

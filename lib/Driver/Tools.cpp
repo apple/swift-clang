@@ -3068,6 +3068,9 @@ ParsePICArgs(const ToolChain &ToolChain, const llvm::Triple &Triple,
   // ToolChain.getTriple() and Triple?
   bool PIE = ToolChain.isPIEDefault();
   bool PIC = PIE || ToolChain.isPICDefault();
+  // The Darwin default to use PIC does not apply when using -static.
+  if (ToolChain.getTriple().isOSDarwin() && Args.hasArg(options::OPT_static))
+    PIE = PIC = false;
   bool IsPICLevelTwo = PIC;
 
   bool KernelOrKext =

@@ -2151,7 +2151,6 @@ ASTReader::ReadControlBlock(ModuleFile &F,
                             const ModuleFile *ImportedBy,
                             unsigned ClientLoadCapabilities) {
   BitstreamCursor &Stream = F.Stream;
-  ASTReadResult Result = Success;
 
   if (Stream.EnterSubBlock(CONTROL_BLOCK_ID)) {
     Error("malformed block record in AST file");
@@ -2212,7 +2211,7 @@ ASTReader::ReadControlBlock(ModuleFile &F,
         }
       }
 
-      return Result;
+      return Success;
     }
 
     case llvm::BitstreamEntry::SubBlock:
@@ -2240,21 +2239,16 @@ ASTReader::ReadControlBlock(ModuleFile &F,
           bool AllowCompatibleConfigurationMismatch =
               F.Kind == MK_ExplicitModule;
 
-          Result = ReadOptionsBlock(Stream, ClientLoadCapabilities,
-                                    AllowCompatibleConfigurationMismatch,
-                                    *Listener, SuggestedPredefines);
+          auto Result = ReadOptionsBlock(Stream, ClientLoadCapabilities,
+                                         AllowCompatibleConfigurationMismatch,
+                                         *Listener, SuggestedPredefines);
           if (Result == Failure) {
             Error("malformed block record in AST file");
             return Result;
           }
 
-          if (DisableValidation ||
-              (AllowConfigurationMismatch && Result == ConfigurationMismatch))
-            Result = Success;
-
-          // If we've diagnosed a problem, we're done.
-          if (Result != Success &&
-              isDiagnosedResult(Result, ClientLoadCapabilities))
+          if (!DisableValidation && Result != Success &&
+              (Result != ConfigurationMismatch || !AllowConfigurationMismatch))
             return Result;
         } else if (Stream.SkipBlock()) {
           Error("malformed block record in AST file");

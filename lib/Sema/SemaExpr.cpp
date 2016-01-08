@@ -5384,13 +5384,13 @@ CastKind Sema::PrepareScalarCast(ExprResult &Src, QualType DestTy) {
       return CK_IntegralToFloating;
     case Type::STK_IntegralComplex:
       Src = ImpCastExprToType(Src.get(),
-                      DestTy->castAs<ComplexType>()->getElementType(),
-                      CK_IntegralCast);
+                              DestTy->castAs<ComplexType>()->getElementType(),
+                              CK_IntegralCast);
       return CK_IntegralRealToComplex;
     case Type::STK_FloatingComplex:
       Src = ImpCastExprToType(Src.get(),
-                      DestTy->castAs<ComplexType>()->getElementType(),
-                      CK_IntegralToFloating);
+                              DestTy->castAs<ComplexType>()->getElementType(),
+                              CK_IntegralToFloating);
       return CK_FloatingRealToComplex;
     case Type::STK_MemberPointer:
       llvm_unreachable("member pointer type in C");
@@ -6875,7 +6875,7 @@ Sema::CheckAssignmentConstraints(SourceLocation Loc,
   ExprResult RHSPtr = &RHSExpr;
   CastKind K = CK_Invalid;
 
-  return CheckAssignmentConstraints(LHSType, RHSPtr, K, /*ConvertRHS=*/false);
+  return CheckAssignmentConstraints(LHSType, RHSPtr, K);
 }
 
 /// CheckAssignmentConstraints (C99 6.5.16) - This routine currently
@@ -6897,7 +6897,7 @@ Sema::CheckAssignmentConstraints(SourceLocation Loc,
 /// Sets 'Kind' for any result kind except Incompatible.
 Sema::AssignConvertType
 Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
-                                 CastKind &Kind, bool ConvertRHS) {
+                                 CastKind &Kind) {
   QualType RHSType = RHS.get()->getType();
   QualType OrigLHSType = LHSType;
 
@@ -6919,7 +6919,7 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
       CheckAssignmentConstraints(AtomicTy->getValueType(), RHS, Kind);
     if (result != Compatible)
       return result;
-    if (Kind != CK_NoOp && ConvertRHS)
+    if (Kind != CK_NoOp)
       RHS = ImpCastExprToType(RHS.get(), AtomicTy->getValueType(), Kind);
     Kind = CK_NonAtomicToAtomic;
     return Compatible;
@@ -6949,7 +6949,7 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
       // CK_VectorSplat does T -> vector T, so first cast to the
       // element type.
       QualType elType = cast<ExtVectorType>(LHSType)->getElementType();
-      if (elType != RHSType && ConvertRHS) {
+      if (elType != RHSType) {
         Kind = PrepareScalarCast(RHS, elType);
         RHS = ImpCastExprToType(RHS.get(), elType, Kind);
       }
@@ -6982,8 +6982,7 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
   // Arithmetic conversions.
   if (LHSType->isArithmeticType() && RHSType->isArithmeticType() &&
       !(getLangOpts().CPlusPlus && LHSType->isEnumeralType())) {
-    if (ConvertRHS)
-      Kind = PrepareScalarCast(RHS, LHSType);
+    Kind = PrepareScalarCast(RHS, LHSType);
     return Compatible;
   }
 
@@ -7108,8 +7107,7 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
     // Only under strict condition T^ is compatible with an Objective-C pointer.
     if (RHSType->isBlockPointerType() && 
         LHSType->isBlockCompatibleObjCPointerType(Context)) {
-      if (ConvertRHS)
-        maybeExtendBlockObject(RHS);
+      maybeExtendBlockObject(RHS);
       Kind = CK_BlockPointerToObjCPointerCast;
       return Compatible;
     }
@@ -7235,16 +7233,9 @@ Sema::CheckTransparentUnionArgumentConstraints(QualType ArgType,
 }
 
 Sema::AssignConvertType
-Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
+Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &RHS,
                                        bool Diagnose,
-                                       bool DiagnoseCFAudited,
-                                       bool ConvertRHS) {
-  // If ConvertRHS is false, we want to leave the caller's RHS untouched. Sadly,
-  // we can't avoid *all* modifications at the moment, so we need some somewhere
-  // to put the updated value.
-  ExprResult LocalRHS = CallerRHS;
-  ExprResult &RHS = ConvertRHS ? CallerRHS : LocalRHS;
-
+                                       bool DiagnoseCFAudited) {
   if (getLangOpts().CPlusPlus) {
     if (!LHSType->isRecordType() && !LHSType->isAtomicType()) {
       // C++ 5.17p3: If the left operand is not of class type, the
@@ -7302,8 +7293,7 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
     CastKind Kind;
     CXXCastPath Path;
     CheckPointerConversion(RHS.get(), LHSType, Kind, Path, false);
-    if (ConvertRHS)
-      RHS = ImpCastExprToType(RHS.get(), LHSType, Kind, VK_RValue, &Path);
+    RHS = ImpCastExprToType(RHS.get(), LHSType, Kind, VK_RValue, &Path);
     return Compatible;
   }
 
@@ -7314,7 +7304,6 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
   //
   // Suppress this for references: C++ 8.5.3p5.
   if (!LHSType->isReferenceType()) {
-    // FIXME: We potentially allocate here even if ConvertRHS is false.
     RHS = DefaultFunctionArrayLvalueConversion(RHS.get());
     if (RHS.isInvalid())
       return Incompatible;
@@ -7331,7 +7320,7 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
   
   CastKind Kind = CK_Invalid;
   Sema::AssignConvertType result =
-    CheckAssignmentConstraints(LHSType, RHS, Kind, ConvertRHS);
+    CheckAssignmentConstraints(LHSType, RHS, Kind);
 
   // C99 6.5.16.1p2: The value of the right operand is converted to the
   // type of the assignment expression.
@@ -7353,8 +7342,7 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &CallerRHS,
       return Compatible;
     }
     
-    if (ConvertRHS)
-      RHS = ImpCastExprToType(E, Ty, Kind);
+    RHS = ImpCastExprToType(E, Ty, Kind);
   }
   return result;
 }

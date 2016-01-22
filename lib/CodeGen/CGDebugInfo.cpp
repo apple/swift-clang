@@ -2210,8 +2210,12 @@ llvm::DIModule *CGDebugInfo::getParentModuleOrNull(const Decl *D) {
     // option.
     FullSourceLoc Loc(D->getLocation(), CGM.getContext().getSourceManager());
     if (Module *M = ClangModuleMap->inferModuleFromLocation(Loc)) {
+      // This is a (sub-)module.
       auto Info = ExternalASTSource::ASTSourceDescriptor(*M);
       return getOrCreateModuleRef(Info, /*SkeletonCU=*/false);
+    } else {
+      // This the precompiled header being built.
+      return getOrCreateModuleRef(PCHDescriptor, /*SkeletonCU=*/false);
     }
   }
 

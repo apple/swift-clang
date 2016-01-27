@@ -4464,7 +4464,7 @@ public:
           Triple.getOS() == llvm::Triple::UnknownOS ||
           StringRef(CPU).startswith("cortex-m")) {
         setABI("aapcs");
-      } else if (Triple.isWatchOS()) {
+      } else if (Triple.isWatchABI()) {
         setABI("aapcs16");
       } else {
         setABI("apcs-gnu");
@@ -4679,7 +4679,7 @@ public:
 
     // Unfortunately, __ARM_ARCH_7K__ is now more of an ABI descriptor. The CPU
     // happens to be Cortex-A7 though, so it should still get __ARM_ARCH_7A__.
-    if (getTriple().isWatchOS())
+    if (getTriple().isWatchABI())
       Builder.defineMacro("__ARM_ARCH_7K__", "2");
 
     if (!CPUAttr.empty())
@@ -4865,8 +4865,8 @@ public:
   BuiltinVaListKind getBuiltinVaListKind() const override {
     return IsAAPCS
                ? AAPCSABIBuiltinVaList
-               : (getTriple().isWatchOS() ? TargetInfo::CharPtrBuiltinVaList
-                                          : TargetInfo::VoidPtrBuiltinVaList);
+               : (getTriple().isWatchABI() ? TargetInfo::CharPtrBuiltinVaList
+                                           : TargetInfo::VoidPtrBuiltinVaList);
   }
   ArrayRef<const char *> getGCCRegNames() const override;
   ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override;
@@ -5207,7 +5207,7 @@ public:
     // ARMleTargetInfo.
     MaxAtomicInlineWidth = 64;
 
-    if (Triple.isWatchOS()) {
+    if (Triple.isWatchABI()) {
       // Darwin on iOS uses a variant of the ARM C++ ABI.
       TheCXXABI.set(TargetCXXABI::WatchOS);
 

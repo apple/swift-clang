@@ -1040,6 +1040,12 @@ static void ComputeDATE_TIME(SourceLocation &DATELoc, SourceLocation &TIMELoc,
 }
 
 
+static bool hasModuleFeature(StringRef Feature, const LangOptions &LangOpts) {
+    return std::find(LangOpts.ModuleFeatures.begin(),
+                     LangOpts.ModuleFeatures.end(),
+                     Feature) != LangOpts.ModuleFeatures.end();
+}
+
 /// HasFeature - Return true if we recognize and implement the feature
 /// specified by the identifier as a standard language feature.
 static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
@@ -1093,7 +1099,8 @@ static bool HasFeature(const Preprocessor &PP, const IdentifierInfo *II) {
       .Case("objc_arc", LangOpts.ObjCAutoRefCount)
       .Case("objc_arc_weak", LangOpts.ObjCWeak)
       .Case("objc_default_synthesize_properties", LangOpts.ObjC2)
-      .Case("objc_fixed_enum", LangOpts.ObjC2)
+      .Case("objc_fixed_enum", LangOpts.ObjC2 ||
+            hasModuleFeature("swift", LangOpts))
       .Case("objc_instancetype", LangOpts.ObjC2)
       .Case("objc_kindof", LangOpts.ObjC2)
       .Case("objc_modules", LangOpts.ObjC2 && LangOpts.Modules)

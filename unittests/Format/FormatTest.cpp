@@ -14,6 +14,7 @@
 
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "gtest/gtest.h"
 
 #define DEBUG_TYPE "format-test"
@@ -11199,6 +11200,39 @@ TEST_F(FormatTest, FormatsTableGenCode) {
   verifyFormat("include \"a.td\"\ninclude \"b.td\"", Style);
 }
 
+// Since this test case uses UNIX-style file path. We disable it for MS
+// compiler.
+#if !defined(_MSC_VER) && !defined(__MINGW32__)
+
+TEST(FormatStyle, GetStyleOfFile) {
+  vfs::InMemoryFileSystem FS;
+  // Test 1: format file in the same directory.
+  ASSERT_TRUE(
+      FS.addFile("/a/.clang-format", 0,
+                 llvm::MemoryBuffer::getMemBuffer("BasedOnStyle: LLVM")));
+  ASSERT_TRUE(
+      FS.addFile("/a/test.cpp", 0, llvm::MemoryBuffer::getMemBuffer("int i;")));
+  auto Style1 = getStyle("file", "/a/.clang-format", "Google", &FS);
+  ASSERT_EQ(Style1, getLLVMStyle());
+
+  // Test 2: fallback to default.
+  ASSERT_TRUE(
+      FS.addFile("/b/test.cpp", 0, llvm::MemoryBuffer::getMemBuffer("int i;")));
+  auto Style2 = getStyle("file", "/b/test.cpp", "Mozilla", &FS);
+  ASSERT_EQ(Style2, getMozillaStyle());
+
+  // Test 3: format file in parent directory.
+  ASSERT_TRUE(
+      FS.addFile("/c/.clang-format", 0,
+                 llvm::MemoryBuffer::getMemBuffer("BasedOnStyle: Google")));
+  ASSERT_TRUE(FS.addFile("/c/sub/sub/sub/test.cpp", 0,
+                         llvm::MemoryBuffer::getMemBuffer("int i;")));
+  auto Style3 = getStyle("file", "/c/sub/sub/sub/test.cpp", "LLVM", &FS);
+  ASSERT_EQ(Style3, getGoogleStyle());
+}
+
+#endif // _MSC_VER
+
 class ReplacementTest : public ::testing::Test {
 protected:
   tooling::Replacement createReplacement(SourceLocation Start, unsigned Length,
@@ -11236,7 +11270,8 @@ TEST_F(ReplacementTest, FormatCodeAfterReplacements) {
 
   format::FormatStyle Style = format::getLLVMStyle();
   Style.ColumnLimit = 20; // Set column limit to 20 to increase readibility.
-  EXPECT_EQ(Expected, applyAllReplacementsAndFormat(Code, Replaces, Style));
+  EXPECT_EQ(Expected, applyAllReplacements(
+                          Code, formatReplacements(Code, Replaces, Style)));
 }
 
 } // end namespace

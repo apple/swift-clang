@@ -16,6 +16,7 @@
 #define LLVM_CLANG_FORMAT_FORMAT_H
 
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/VirtualFileSystem.h"
 #include "clang/Tooling/Core/Replacement.h"
 #include "llvm/ADT/ArrayRef.h"
 #include <system_error>
@@ -765,22 +766,6 @@ tooling::Replacements formatReplacements(StringRef Code,
                                          const tooling::Replacements &Replaces,
                                          const FormatStyle &Style);
 
-/// \brief In addition to applying all replacements in \p Replaces to \p Code,
-/// this function also reformats the changed code after applying replacements.
-///
-/// \pre Replacements must be for the same file and conflict-free.
-///
-/// Replacement applications happen independently of the success of
-/// other applications.
-///
-/// \returns the changed code with all replacements applied and formatted, if
-/// successful. An empty string otherwise.
-///
-/// See also "include/clang/Tooling/Core/Replacements.h".
-std::string applyAllReplacementsAndFormat(StringRef Code,
-                                          const tooling::Replacements &Replaces,
-                                          const FormatStyle &Style);
-
 /// \brief Reformats the given \p Ranges in the file \p ID.
 ///
 /// Each range is extended on either end to its next bigger logic unit, i.e.
@@ -832,11 +817,13 @@ extern const char *StyleOptionHelpDescription;
 /// == "file".
 /// \param[in] FallbackStyle The name of a predefined style used to fallback to
 /// in case the style can't be determined from \p StyleName.
+/// \param[in] FS The underlying file system, in which the file resides. By
+/// default, the file system is the real file system.
 ///
 /// \returns FormatStyle as specified by ``StyleName``. If no style could be
 /// determined, the default is LLVM Style (see ``getLLVMStyle()``).
 FormatStyle getStyle(StringRef StyleName, StringRef FileName,
-                     StringRef FallbackStyle);
+                     StringRef FallbackStyle, vfs::FileSystem *FS = nullptr);
 
 } // end namespace format
 } // end namespace clang

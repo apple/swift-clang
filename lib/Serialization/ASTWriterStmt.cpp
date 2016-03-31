@@ -1701,6 +1701,7 @@ void ASTStmtWriter::VisitMSPropertySubscriptExpr(MSPropertySubscriptExpr *E) {
 void ASTStmtWriter::VisitCXXUuidofExpr(CXXUuidofExpr *E) {
   VisitExpr(E);
   Writer.AddSourceRange(E->getSourceRange(), Record);
+  Writer.AddString(E->getUuidStr(), Record);
   if (E->isTypeOperand()) {
     Writer.AddTypeSourceInfo(E->getTypeOperandSourceInfo(), Record);
     Code = serialization::EXPR_CXX_UUIDOF_TYPE;
@@ -2096,6 +2097,7 @@ void ASTStmtWriter::VisitOMPLoopDirective(OMPLoopDirective *D) {
   Writer.AddStmt(D->getCond());
   Writer.AddStmt(D->getInit());
   Writer.AddStmt(D->getInc());
+  Writer.AddStmt(D->getPreInits());
   if (isOpenMPWorksharingDirective(D->getDirectiveKind()) ||
       isOpenMPTaskLoopDirective(D->getDirectiveKind()) ||
       isOpenMPDistributeDirective(D->getDirectiveKind())) {

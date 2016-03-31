@@ -57,6 +57,8 @@
  ...
  Globals:                 # List of globals
  ...
+ Enumerators:             # List of enumerators
+ ...
  Tags:                    # List of tags (struct/union/enum/C++ class)
  ...
  Typedefs:                # List of typedef-names and C++11 type aliases
@@ -759,7 +761,7 @@ namespace {
       llvm::StringSet<> knownTypedefs;
       for (const auto &t : TheModule.Typedefs) {
         // Check for duplicate typedef definitions.
-        if (!knownTags.insert(t.Name).second) {
+        if (!knownTypedefs.insert(t.Name).second) {
           emitError("multiple definitions of typedef '" + t.Name + "'");
           continue;
         }

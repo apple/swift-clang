@@ -242,6 +242,7 @@ def MicrosoftExt : LangOpt<"MicrosoftExt">;
 def Borland : LangOpt<"Borland">;
 def CUDA : LangOpt<"CUDA">;
 def COnly : LangOpt<"CPlusPlus", 1>;
+def OpenCL : LangOpt<"OpenCL">;
 
 // Defines targets for target-specific attributes. The list of strings should
 // specify architectures for which the target applies, based off the ArchType
@@ -721,6 +722,14 @@ def OpenCLConstantAddressSpace : TypeAttr {
 def OpenCLGenericAddressSpace : TypeAttr {
   let Spellings = [Keyword<"__generic">, Keyword<"generic">];
   let Documentation = [OpenCLAddressSpaceGenericDocs];
+}
+
+def OpenCLNoSVM : Attr {
+  let Spellings = [GNU<"nosvm">];
+  let Subjects = SubjectList<[Var]>;
+  let Documentation = [OpenCLNoSVMDocs];
+  let LangOpts = [OpenCL];
+  let ASTNode = 0;
 }
 
 def Deprecated : InheritableAttr {
@@ -2324,8 +2333,23 @@ def OMPDeclareSimdDecl : Attr {
   let SemaHandler = 0;
   let HasCustomParsing = 1;
   let Documentation = [OMPDeclareSimdDocs];
+  let Args = [EnumArgument<"BranchState", "BranchStateTy",
+                           ["", "inbranch", "notinbranch"],
+                           ["BS_Undefined", "BS_Inbranch", "BS_Notinbranch"]>];
   let AdditionalMembers = [{
-  void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {}
+    void printPrettyPragma(raw_ostream & OS, const PrintingPolicy &Policy)
+        const {
+      OS << ' ' << ConvertBranchStateTyToStr(getBranchState());
+    }
+  }];
+}
+
+def OMPDeclareTargetDecl : Attr {
+  let Spellings = [Pragma<"omp", "declare target">];
+  let SemaHandler = 0;
+  let Documentation = [OMPDeclareTargetDocs];
+  let AdditionalMembers = [{
+    void printPrettyPragma(raw_ostream &OS, const PrintingPolicy &Policy) const {}
   }];
 }
 

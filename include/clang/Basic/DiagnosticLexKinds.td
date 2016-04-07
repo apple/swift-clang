@@ -387,7 +387,7 @@ def err_pp_expected_comma_in_arg_list : Error<
 def err_pp_duplicate_name_in_arg_list : Error<
   "duplicate macro parameter name %0">;
 def err_pp_stringize_not_parameter : Error<
-  "'#' is not followed by a macro parameter">;
+  "'%select{#|#@}0' is not followed by a macro parameter">;
 def err_pp_malformed_ident : Error<"invalid #ident directive">;
 def err_pp_unterminated_conditional : Error<
   "unterminated conditional directive">;
@@ -401,6 +401,7 @@ def err_pp_expected_rparen : Error<"expected ')' in preprocessor expression">;
 def err_pp_expected_eol : Error<
   "expected end of line in preprocessor expression">;
 def err_pp_expected_after : Error<"missing %1 after %0">;
+def err_pp_nested_paren : Error<"nested parentheses not permitted in %0">;
 def err_pp_colon_without_question : Error<"':' without preceding '?'">;
 def err_pp_division_by_zero : Error<
   "division by zero in preprocessor expression">;

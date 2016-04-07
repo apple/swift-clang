@@ -2137,7 +2137,7 @@ def err_attribute_bad_neon_vector_size : Error<
 def err_attribute_requires_positive_integer : Error<
   "%0 attribute requires a positive integral compile time constant expression">;
 def err_attribute_requires_opencl_version : Error<
-  "%0 attribute requires OpenCL version %1 or above">;
+  "%0 attribute requires OpenCL version %1%select{| or above}2">;
 def warn_unsupported_target_attribute
     : Warning<"Ignoring unsupported '%0' in the target attribute string">,
     InGroup<IgnoredAttributes>;
@@ -4347,7 +4347,7 @@ def err_redefinition_different_typedef : Error<
   "%select{typedef|type alias|type alias template}0 "
   "redefinition with different types%diff{ ($ vs $)|}1,2">;
 def err_tag_reference_non_tag : Error<
-  "elaborated type refers to %select{a non-tag type|a typedef|a type alias|a template|a type alias template}0">;
+  "elaborated type refers to %select{a non-tag type|a typedef|a type alias|a template|a type alias template|a template template argument}0">;
 def err_tag_reference_conflict : Error<
   "implicit declaration introduced by elaborated type conflicts with "
   "%select{a declaration|a typedef|a type alias|a template}0 of the same name">;
@@ -6522,6 +6522,12 @@ def err_variadic_device_fn : Error<
 def err_va_arg_in_device : Error<
   "CUDA device code does not support va_arg">;
 def err_alias_not_supported_on_nvptx : Error<"CUDA does not support aliases">;
+def err_cuda_unattributed_constexpr_cannot_overload_device : Error<
+  "constexpr function '%0' without __host__ or __device__ attributes cannot "
+  "overload __device__ function with same signature.  Add a __host__ "
+  "attribute, or build with -fno-cuda-host-device-constexpr.">;
+def note_cuda_conflicting_device_function_declared_here : Note<
+  "conflicting __device__ function declared here">;
 def err_dynamic_var_init : Error<
     "dynamic initialization is not supported for "
     "__device__, __constant__, and __shared__ variables.">;
@@ -7808,6 +7814,9 @@ def err_opencl_pointer_to_type : Error<
   "pointer to type %0 is invalid in OpenCL">;
 def err_opencl_type_can_only_be_used_as_function_parameter : Error <
   "type %0 can only be used as a function parameter in OpenCL">;
+def warn_opencl_attr_deprecated_ignored : Warning <
+  "%0 attribute is deprecated and ignored in OpenCL version %1">,
+  InGroup<IgnoredAttributes>;
 
 // OpenCL v2.0 s6.13.6 -- Builtin Pipe Functions
 def err_opencl_builtin_pipe_first_arg : Error<
@@ -7852,6 +7861,8 @@ def err_omp_global_var_arg : Error<
   "arguments of '#pragma omp %0' must have %select{global storage|static storage duration}1">;
 def err_omp_ref_type_arg : Error<
   "arguments of '#pragma omp %0' cannot be of reference type %1">;
+def err_omp_region_not_file_context : Error<
+  "directive must be at file or namespace scope">;
 def err_omp_var_scope : Error<
   "'#pragma omp %0' must appear in the scope of the %q1 variable declaration">;
 def err_omp_var_used : Error<
@@ -7927,6 +7938,8 @@ def err_omp_negative_expression_in_clause : Error<
 def err_omp_not_integral : Error<
   "expression must have integral or unscoped enumeration "
   "type, not %0">;
+def err_omp_threadprivate_in_target : Error<
+  "threadprivate variables cannot be used in target constructs">;
 def err_omp_incomplete_type : Error<
   "expression has incomplete class type %0">;
 def err_omp_explicit_conversion : Error<
@@ -7953,6 +7966,11 @@ def warn_omp_linear_step_zero : Warning<
 def warn_omp_alignment_not_power_of_two : Warning<
   "aligned clause will be ignored because the requested alignment is not a power of 2">,
   InGroup<OpenMPClauses>;
+def err_omp_enclosed_declare_target : Error<
+  "declare target region may not be enclosed within another declare target region">;
+def warn_omp_not_in_target_context : Warning<
+  "declaration is not declared in any declare target region">,
+  InGroup<OpenMPTarget>;
 def err_omp_aligned_expected_array_or_ptr : Error<
   "argument of aligned clause should be array"
   "%select{ or pointer|, pointer, reference to array or reference to pointer}1"

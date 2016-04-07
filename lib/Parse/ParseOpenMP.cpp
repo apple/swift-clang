@@ -31,6 +31,8 @@ enum OpenMPDirectiveKindEx {
   OMPD_cancellation = OMPD_unknown + 1,
   OMPD_data,
   OMPD_declare,
+  OMPD_end,
+  OMPD_end_declare,
   OMPD_enter,
   OMPD_exit,
   OMPD_point,
@@ -51,6 +53,7 @@ static unsigned getOpenMPDirectiveKindEx(StringRef S) {
       .Case("cancellation", OMPD_cancellation)
       .Case("data", OMPD_data)
       .Case("declare", OMPD_declare)
+      .Case("end", OMPD_end)
       .Case("enter", OMPD_enter)
       .Case("exit", OMPD_exit)
       .Case("point", OMPD_point)
@@ -66,6 +69,9 @@ static OpenMPDirectiveKind ParseOpenMPDirectiveKind(Parser &P) {
     { OMPD_cancellation, OMPD_point, OMPD_cancellation_point },
     { OMPD_declare, OMPD_reduction, OMPD_declare_reduction },
     { OMPD_declare, OMPD_simd, OMPD_declare_simd },
+    { OMPD_declare, OMPD_target, OMPD_declare_target },
+    { OMPD_end, OMPD_declare, OMPD_end_declare },
+    { OMPD_end_declare, OMPD_target, OMPD_end_declare_target },
     { OMPD_target, OMPD_data, OMPD_target_data },
     { OMPD_target, OMPD_enter, OMPD_target_enter },
     { OMPD_target, OMPD_exit, OMPD_target_exit },
@@ -323,6 +329,37 @@ Parser::ParseOpenMPDeclareReductionDirective(AccessSpecifier AS) {
                                                          IsCorrect);
 }
 
+/// Parses clauses for 'declare simd' directive.
+///    clause:
+///      'inbranch' | 'notinbranch'
+static void parseDeclareSimdClauses(Parser &P,
+                                    OMPDeclareSimdDeclAttr::BranchStateTy &BS) {
+  SourceRange BSRange;
+  const Token &Tok = P.getCurToken();
+  while (Tok.isNot(tok::annot_pragma_openmp_end)) {
+    if (Tok.isNot(tok::identifier))
+      break;
+    OMPDeclareSimdDeclAttr::BranchStateTy Out;
+    StringRef TokName = Tok.getIdentifierInfo()->getName();
+    // Parse 'inranch|notinbranch' clauses.
+    if (OMPDeclareSimdDeclAttr::ConvertStrToBranchStateTy(TokName, Out)) {
+      if (BS != OMPDeclareSimdDeclAttr::BS_Undefined && BS != Out) {
+        P.Diag(Tok, diag::err_omp_declare_simd_inbranch_notinbranch)
+            << TokName << OMPDeclareSimdDeclAttr::ConvertBranchStateTyToStr(BS)
+            << BSRange;
+      }
+      BS = Out;
+      BSRange = SourceRange(Tok.getLocation(), Tok.getEndLoc());
+    } else
+      // TODO: add parsing of other clauses.
+      break;
+    P.ConsumeToken();
+    // Skip ',' if any.
+    if (Tok.is(tok::comma))
+      P.ConsumeToken();
+  }
+}
+
 /// \brief Parsing of declarative OpenMP directives.
 ///
 ///       threadprivate-directive:
@@ -387,8 +424,11 @@ Parser::DeclGroupPtrTy Parser::ParseOpenMPDeclarativeDirectiveWithExtDecl(
     //
 
     ConsumeToken();
-    // The last seen token is annot_pragma_openmp_end - need to check for
-    // extra tokens.
+    OMPDeclareSimdDeclAttr::BranchStateTy BS =
+        OMPDeclareSimdDeclAttr::BS_Undefined;
+    parseDeclareSimdClauses(*this, BS);
+
+    // Need to check for extra tokens.
     if (Tok.isNot(tok::annot_pragma_openmp_end)) {
       Diag(Tok, diag::warn_omp_extra_tokens_at_eol)
           << getOpenMPDirectiveName(OMPD_declare_simd);
@@ -396,12 +436,12 @@ Parser::DeclGroupPtrTy Parser::ParseOpenMPDeclarativeDirectiveWithExtDecl(
         ConsumeAnyToken();
     }
     // Skip the last annot_pragma_openmp_end.
-    ConsumeToken();
+    SourceLocation EndLoc = ConsumeToken();
 
     DeclGroupPtrTy Ptr;
-    if (Tok.is(tok::annot_pragma_openmp)) {
+    if (Tok.is(tok::annot_pragma_openmp))
       Ptr = ParseOpenMPDeclarativeDirectiveWithExtDecl(AS, Attrs, TagType, Tag);
-    } else if (Tok.isNot(tok::r_brace) && !isEofOrEom()) {
+    else if (Tok.isNot(tok::r_brace) && !isEofOrEom()) {
       // Here we expect to see some function declaration.
       if (AS == AS_none) {
         assert(TagType == DeclSpec::TST_unspecified);
@@ -419,7 +459,55 @@ Parser::DeclGroupPtrTy Parser::ParseOpenMPDeclarativeDirectiveWithExtDecl(
       return DeclGroupPtrTy();
     }
 
-    return Actions.ActOnOpenMPDeclareSimdDirective(Ptr, Loc);
+    return Actions.ActOnOpenMPDeclareSimdDirective(Ptr, BS,
+                                                   SourceRange(Loc, EndLoc));
+  }
+  case OMPD_declare_target: {
+    SourceLocation DTLoc = ConsumeAnyToken();
+    if (Tok.isNot(tok::annot_pragma_openmp_end)) {
+      Diag(Tok, diag::warn_omp_extra_tokens_at_eol)
+          << getOpenMPDirectiveName(OMPD_declare_target);
+      SkipUntil(tok::annot_pragma_openmp_end, StopBeforeMatch);
+    }
+    // Skip the last annot_pragma_openmp_end.
+    ConsumeAnyToken();
+
+    if (!Actions.ActOnStartOpenMPDeclareTargetDirective(DTLoc))
+      return DeclGroupPtrTy();
+
+    DKind = ParseOpenMPDirectiveKind(*this);
+    while (DKind != OMPD_end_declare_target && DKind != OMPD_declare_target &&
+           Tok.isNot(tok::eof) && Tok.isNot(tok::r_brace)) {
+      ParsedAttributesWithRange attrs(AttrFactory);
+      MaybeParseCXX11Attributes(attrs);
+      MaybeParseMicrosoftAttributes(attrs);
+      ParseExternalDeclaration(attrs);
+      if (Tok.isAnnotation() && Tok.is(tok::annot_pragma_openmp)) {
+        TentativeParsingAction TPA(*this);
+        ConsumeToken();
+        DKind = ParseOpenMPDirectiveKind(*this);
+        if (DKind != OMPD_end_declare_target)
+          TPA.Revert();
+        else
+          TPA.Commit();
+      }
+    }
+
+    if (DKind == OMPD_end_declare_target) {
+      ConsumeAnyToken();
+      if (Tok.isNot(tok::annot_pragma_openmp_end)) {
+        Diag(Tok, diag::warn_omp_extra_tokens_at_eol)
+            << getOpenMPDirectiveName(OMPD_end_declare_target);
+        SkipUntil(tok::annot_pragma_openmp_end, StopBeforeMatch);
+      }
+      // Skip the last annot_pragma_openmp_end.
+      ConsumeAnyToken();
+    } else {
+      Diag(Tok, diag::err_expected_end_declare_target);
+      Diag(DTLoc, diag::note_matching) << "'#pragma omp declare target'";
+    }
+    Actions.ActOnFinishOpenMPDeclareTargetDirective();
+    return DeclGroupPtrTy();
   }
   case OMPD_unknown:
     Diag(Tok, diag::err_omp_unknown_directive);
@@ -456,6 +544,7 @@ Parser::DeclGroupPtrTy Parser::ParseOpenMPDeclarativeDirectiveWithExtDecl(
   case OMPD_taskloop:
   case OMPD_taskloop_simd:
   case OMPD_distribute:
+  case OMPD_end_declare_target:
     Diag(Tok, diag::err_omp_unexpected_directive)
         << getOpenMPDirectiveName(DKind);
     break;
@@ -676,6 +765,8 @@ StmtResult Parser::ParseOpenMPDeclarativeOrExecutableDirective(
     break;
   }
   case OMPD_declare_simd:
+  case OMPD_declare_target:
+  case OMPD_end_declare_target:
     Diag(Tok, diag::err_omp_unexpected_directive)
         << getOpenMPDirectiveName(DKind);
     SkipUntil(tok::annot_pragma_openmp_end);

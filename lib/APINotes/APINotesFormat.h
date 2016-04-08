@@ -36,7 +36,7 @@ const uint16_t VERSION_MAJOR = 0;
 /// API notes file minor version number.
 ///
 /// When the format changes IN ANY WAY, this number should be incremented.
-const uint16_t VERSION_MINOR = 10;  // enum constants
+const uint16_t VERSION_MINOR = 11;  // SwiftInferImportAsMember
 
 using IdentifierID = PointerEmbeddedInt<unsigned, 31>;
 using IdentifierIDField = BCVBR<16>;
@@ -105,7 +105,8 @@ namespace control_block {
   // VERSION_MAJOR.
   enum {
     METADATA = 1,
-    MODULE_NAME = 2
+    MODULE_NAME = 2,
+    MODULE_OPTIONS = 3
   };
 
   using MetadataLayout = BCRecordLayout<
@@ -117,6 +118,11 @@ namespace control_block {
   using ModuleNameLayout = BCRecordLayout<
     MODULE_NAME,
     BCBlob       // Module name
+  >;
+
+  using ModuleOptionsLayout = BCRecordLayout<
+    MODULE_OPTIONS,
+    BCFixed<1> // SwiftInferImportAsMember
   >;
 }
 

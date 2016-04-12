@@ -1995,27 +1995,6 @@ All of these conventions except ``none`` require the function to have an error p
 * ``swift_error(nonzero_result)`` means that calls to the function should be considered to have thrown if they return a non-zero result.  The return type must be an integral type.  If the return type would have been imported as ``Bool``, it is instead imported as ``Void``.
 
 * ``swift_error(nonnull_error)`` means that calls to the function should be considered to have thrown if they leave a non-null error in the error parameter.  The return type is left unmodified.
-
-<<<<<<< HEAD
-=======
-}];
-}
-
-def OMPDeclareTargetDocs : Documentation {
-  let Category = DocCatFunction;
-  let Heading = "#pragma omp declare target";
-  let Content = [{
-The `declare target` directive specifies that variables and functions are mapped
-to a device for OpenMP offload mechanism.
-
-The syntax of the declare target directive is as follows:
-
-  .. code-block:: c
-
-  #pragma omp declare target new-line
-  declarations-definition-seq
-  #pragma omp end declare target new-line
->>>>>>> 1e2a13e1bfa8989c3ff5e6ccab517c8adb0244f3
   }];
 }
 

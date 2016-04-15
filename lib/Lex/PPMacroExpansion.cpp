@@ -1441,9 +1441,8 @@ static bool EvaluateBuildingModule(Token &Tok,
     return false;
   }
 
-  bool Result =
-      PP.getLangOpts().CompilingModule &&
-      Tok.getIdentifierInfo()->getName() == PP.getLangOpts().CurrentModule;
+  bool Result
+    = Tok.getIdentifierInfo()->getName() == PP.getLangOpts().CurrentModule;
 
   // Get ')'.
   PP.LexNonComment(Tok);

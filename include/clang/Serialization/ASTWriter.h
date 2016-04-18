@@ -409,62 +409,6 @@ private:
   /// file.
   unsigned NumVisibleDeclContexts;
 
-  /// \brief The offset of each CXXBaseSpecifier set within the AST.
-  SmallVector<uint32_t, 16> CXXBaseSpecifiersOffsets;
-
-  /// \brief The first ID number we can use for our own base specifiers.
-  serialization::CXXBaseSpecifiersID FirstCXXBaseSpecifiersID;
-
-  /// \brief The base specifiers ID that will be assigned to the next new
-  /// set of C++ base specifiers.
-  serialization::CXXBaseSpecifiersID NextCXXBaseSpecifiersID;
-
-  /// \brief A set of C++ base specifiers that is queued to be written into the
-  /// AST file.
-  struct QueuedCXXBaseSpecifiers {
-    QueuedCXXBaseSpecifiers() : ID(), Bases(), BasesEnd() { }
-
-    QueuedCXXBaseSpecifiers(serialization::CXXBaseSpecifiersID ID,
-                            CXXBaseSpecifier const *Bases,
-                            CXXBaseSpecifier const *BasesEnd)
-      : ID(ID), Bases(Bases), BasesEnd(BasesEnd) { }
-
-    serialization::CXXBaseSpecifiersID ID;
-    CXXBaseSpecifier const * Bases;
-    CXXBaseSpecifier const * BasesEnd;
-  };
-
-  /// \brief Queue of C++ base specifiers to be written to the AST file,
-  /// in the order they should be written.
-  SmallVector<QueuedCXXBaseSpecifiers, 2> CXXBaseSpecifiersToWrite;
-
-  /// \brief The offset of each CXXCtorInitializer list within the AST.
-  SmallVector<uint32_t, 16> CXXCtorInitializersOffsets;
-
-  /// \brief The first ID number we can use for our own ctor initializers.
-  serialization::CXXCtorInitializersID FirstCXXCtorInitializersID;
-
-  /// \brief The ctor initializers ID that will be assigned to the next new
-  /// list of C++ ctor initializers.
-  serialization::CXXCtorInitializersID NextCXXCtorInitializersID;
-
-  /// \brief A set of C++ ctor initializers that is queued to be written
-  /// into the AST file.
-  struct QueuedCXXCtorInitializers {
-    QueuedCXXCtorInitializers() : ID() {}
-
-    QueuedCXXCtorInitializers(serialization::CXXCtorInitializersID ID,
-                              ArrayRef<CXXCtorInitializer*> Inits)
-        : ID(ID), Inits(Inits) {}
-
-    serialization::CXXCtorInitializersID ID;
-    ArrayRef<CXXCtorInitializer*> Inits;
-  };
-
-  /// \brief Queue of C++ ctor initializers to be written to the AST file,
-  /// in the order they should be written.
-  SmallVector<QueuedCXXCtorInitializers, 2> CXXCtorInitializersToWrite;
-
   /// \brief A mapping from each known submodule to its ID number, which will
   /// be a positive integer.
   llvm::DenseMap<Module *, unsigned> SubmoduleIDs;
@@ -493,8 +437,6 @@ private:
                                         
   void WritePragmaDiagnosticMappings(const DiagnosticsEngine &Diag,
                                      bool isModule);
-  void WriteCXXBaseSpecifiersOffsets();
-  void WriteCXXCtorInitializersOffsets();
 
   unsigned TypeExtQualAbbrev;
   unsigned TypeFunctionProtoAbbrev;
@@ -593,15 +535,6 @@ public:
   /// \brief Emit a source range.
   void AddSourceRange(SourceRange Range, RecordDataImpl &Record);
 
-  /// \brief Emit an integral value.
-  void AddAPInt(const llvm::APInt &Value, RecordDataImpl &Record);
-
-  /// \brief Emit a signed integral value.
-  void AddAPSInt(const llvm::APSInt &Value, RecordDataImpl &Record);
-
-  /// \brief Emit a floating-point value.
-  void AddAPFloat(const llvm::APFloat &Value, RecordDataImpl &Record);
-
   /// \brief Emit a reference to an identifier.
   void AddIdentifierRef(const IdentifierInfo *II, RecordDataImpl &Record);
 
@@ -610,11 +543,6 @@ public:
 
   /// \brief Emit a CXXTemporary.
   void AddCXXTemporary(const CXXTemporary *Temp, RecordDataImpl &Record);
-
-  /// \brief Emit a set of C++ base specifiers to the record.
-  void AddCXXBaseSpecifiersRef(CXXBaseSpecifier const *Bases,
-                               CXXBaseSpecifier const *BasesEnd,
-                               RecordDataImpl &Record);
 
   /// \brief Get the unique number used to refer to the given selector.
   serialization::SelectorID getSelectorRef(Selector Sel);
@@ -669,11 +597,6 @@ public:
   /// \brief Emit a UnresolvedSet structure.
   void AddUnresolvedSet(const ASTUnresolvedSet &Set, RecordDataImpl &Record);
 
-  /// \brief Emit the ID for a CXXCtorInitializer array and register the array
-  /// for later serialization.
-  void AddCXXCtorInitializersRef(ArrayRef<CXXCtorInitializer *> Inits,
-                                 RecordDataImpl &Record);
-
   /// \brief Add a string to the given record.
   void AddString(StringRef Str, RecordDataImpl &Record);
 
@@ -707,21 +630,6 @@ public:
   /// \brief Note that the selector Sel occurs at the given offset
   /// within the method pool/selector table.
   void SetSelectorOffset(Selector Sel, uint32_t Offset);
-
-  /// \brief Flush all of the C++ base specifier sets that have been added
-  /// via \c AddCXXBaseSpecifiersRef().
-  void FlushCXXBaseSpecifiers();
-
-  /// \brief Flush all of the C++ constructor initializer lists that have been
-  /// added via \c AddCXXCtorInitializersRef().
-  void FlushCXXCtorInitializers();
-
-  /// \brief Flush all pending records that are tacked onto the end of
-  /// decl and decl update records.
-  void FlushPendingAfterDecl() {
-    FlushCXXBaseSpecifiers();
-    FlushCXXCtorInitializers();
-  }
 
   /// \brief Record an ID for the given switch-case statement.
   unsigned RecordSwitchCaseID(SwitchCase *S);
@@ -796,10 +704,26 @@ class ASTRecordWriter {
   /// declaration or type.
   SmallVector<Stmt *, 16> StmtsToEmit;
 
+  /// \brief Indices of record elements that describe offsets within the
+  /// bitcode. These will be converted to offsets relative to the current
+  /// record when emitted.
+  SmallVector<unsigned, 8> OffsetIndices;
+
   /// \brief Flush all of the statements and expressions that have
   /// been added to the queue via AddStmt().
   void FlushStmts();
   void FlushSubStmts();
+
+  void PrepareToEmit(uint64_t MyOffset) {
+    // Convert offsets into relative form.
+    for (unsigned I : OffsetIndices) {
+      auto &StoredOffset = (*Record)[I];
+      assert(StoredOffset < MyOffset && "invalid offset");
+      if (StoredOffset)
+        StoredOffset = MyOffset - StoredOffset;
+    }
+    OffsetIndices.clear();
+  }
 
 public:
   /// Construct a ASTRecordWriter that uses the default encoding scheme.
@@ -810,6 +734,10 @@ public:
   /// ASTRecordWriter.
   ASTRecordWriter(ASTRecordWriter &Parent, ASTWriter::RecordDataImpl &Record)
       : Writer(Parent.Writer), Record(&Record) {}
+
+  /// Copying an ASTRecordWriter is almost certainly a bug.
+  ASTRecordWriter(const ASTRecordWriter&) = delete;
+  void operator=(const ASTRecordWriter&) = delete;
 
   /// \brief Extract the underlying record storage.
   ASTWriter::RecordDataImpl &getRecordData() const { return *Record; }
@@ -831,6 +759,7 @@ public:
   // FIXME: Allow record producers to suggest Abbrevs.
   uint64_t Emit(unsigned Code, unsigned Abbrev = 0) {
     uint64_t Offset = Writer->Stream.GetCurrentBitNo();
+    PrepareToEmit(Offset);
     Writer->Stream.EmitRecord(Code, *Record, Abbrev);
     FlushStmts();
     return Offset;
@@ -839,8 +768,16 @@ public:
   /// \brief Emit the record to the stream, preceded by its substatements.
   uint64_t EmitStmt(unsigned Code, unsigned Abbrev = 0) {
     FlushSubStmts();
+    PrepareToEmit(Writer->Stream.GetCurrentBitNo());
     Writer->Stream.EmitRecord(Code, *Record, Abbrev);
     return Writer->Stream.GetCurrentBitNo();
+  }
+
+  /// \brief Add a bit offset into the record. This will be converted into an
+  /// offset relative to the current record when emitted.
+  void AddOffset(uint64_t BitOffset) {
+    OffsetIndices.push_back(Record->size());
+    Record->push_back(BitOffset);
   }
 
   /// \brief Add the given statement or expression to the queue of
@@ -869,19 +806,13 @@ public:
   }
 
   /// \brief Emit an integral value.
-  void AddAPInt(const llvm::APInt &Value) {
-    return Writer->AddAPInt(Value, *Record);
-  }
+  void AddAPInt(const llvm::APInt &Value);
 
   /// \brief Emit a signed integral value.
-  void AddAPSInt(const llvm::APSInt &Value) {
-    return Writer->AddAPSInt(Value, *Record);
-  }
+  void AddAPSInt(const llvm::APSInt &Value);
 
   /// \brief Emit a floating-point value.
-  void AddAPFloat(const llvm::APFloat &Value) {
-    return Writer->AddAPFloat(Value, *Record);
-  }
+  void AddAPFloat(const llvm::APFloat &Value);
 
   /// \brief Emit a reference to an identifier.
   void AddIdentifierRef(const IdentifierInfo *II) {
@@ -898,11 +829,11 @@ public:
     return Writer->AddCXXTemporary(Temp, *Record);
   }
 
+  /// \brief Emit a C++ base specifier.
+  void AddCXXBaseSpecifier(const CXXBaseSpecifier &Base);
+
   /// \brief Emit a set of C++ base specifiers.
-  void AddCXXBaseSpecifiersRef(const CXXBaseSpecifier *BasesBegin,
-                               const CXXBaseSpecifier *BasesEnd) {
-    return Writer->AddCXXBaseSpecifiersRef(BasesBegin, BasesEnd, *Record);
-  }
+  void AddCXXBaseSpecifiers(ArrayRef<CXXBaseSpecifier> Bases);
 
   /// \brief Emit a reference to a type.
   void AddTypeRef(QualType T) {
@@ -968,18 +899,8 @@ public:
     return Writer->AddUnresolvedSet(Set, *Record);
   }
 
-  /// \brief Emit a C++ base specifier.
-  void AddCXXBaseSpecifier(const CXXBaseSpecifier &Base);
-
-  /// \brief Emit the ID for a CXXCtorInitializer array and register the array
-  /// for later serialization.
-  void AddCXXCtorInitializersRef(ArrayRef<CXXCtorInitializer *> Inits) {
-    return Writer->AddCXXCtorInitializersRef(Inits, *Record);
-  }
-
   /// \brief Emit a CXXCtorInitializer array.
-  void AddCXXCtorInitializers(const CXXCtorInitializer *const *CtorInitializers,
-                              unsigned NumCtorInitializers);
+  void AddCXXCtorInitializers(ArrayRef<CXXCtorInitializer*> CtorInits);
 
   void AddCXXDefinitionData(const CXXRecordDecl *D);
 

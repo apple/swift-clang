@@ -24,7 +24,7 @@ inline int add3(int x) {
 // CHECK-SAME:                         type: [[FOO_FUNC_TYPE:![0-9]*]]
 // CHECK: [[FOO_FUNC_TYPE]] = !DISubroutineType(types: [[FOO_FUNC_PARAMS:![0-9]*]])
 // CHECK: [[FOO_FUNC_PARAMS]] = !{null, !{{[0-9]*}}, !"[[OUTER_FOO_INNER_ID:.*]]"}
-// CHECK: !{{[0-9]*}} = !DICompositeType(tag: DW_TAG_structure_type, name: "inner"{{.*}}, identifier: "[[OUTER_FOO_INNER_ID]]")
+// CHECK: !{{[0-9]*}} = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "inner"{{.*}}, identifier: "[[OUTER_FOO_INNER_ID]]")
 
 // CHECK: !DICompositeType(tag: DW_TAG_structure_type, name: "virt<elem>"
 // CHECK-SAME:             elements: [[VIRT_MEM:![0-9]*]]
@@ -34,7 +34,7 @@ inline int add3(int x) {
 // CHECK: [[VIRT_TEMP_PARAM]] = !{[[VIRT_T:![0-9]*]]}
 // CHECK: [[VIRT_T]] = !DITemplateTypeParameter(name: "T", type: !"_ZTS4elem")
 
-// CHECK: [[C:![0-9]*]] = !DICompositeType(tag: DW_TAG_structure_type, name: "MyClass"
+// CHECK: [[C:![0-9]*]] = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "MyClass"
 // CHECK-SAME:                             elements: [[C_MEM:![0-9]*]]
 // CHECK-SAME:                             vtableHolder: !"_ZTS7MyClass"
 // CHECK-SAME:                             identifier: "_ZTS7MyClass")
@@ -43,22 +43,13 @@ inline int add3(int x) {
 
 // CHECK: [[C_FUNC]] = !DISubprogram(name: "func",{{.*}} line: 7,
 
-// CHECK: [[ELEM:![0-9]*]] = !DICompositeType(tag: DW_TAG_structure_type, name: "elem"
+// CHECK: [[ELEM:![0-9]*]] = distinct !DICompositeType(tag: DW_TAG_structure_type, name: "elem"
 // CHECK-SAME:                                elements: [[ELEM_MEM:![0-9]*]]
 // CHECK-SAME:                                identifier: "_ZTS4elem"
 // CHECK: [[ELEM_MEM]] = !{[[ELEM_X:![0-9]*]]}
 // CHECK: [[ELEM_X]] = !DIDerivedType(tag: DW_TAG_member, name: "x", scope: !"_ZTS4elem"
 // CHECK-SAME:                        baseType: !"_ZTS4virtI4elemE"
 
-// Check that the member function template specialization and implicit special
-// members (the default ctor) refer to their class by scope, even though they
-// didn't appear in the class's member list (C_MEM). This prevents the functions
-// from being added to type units, while still appearing in the type
-// declaration/reference in the compile unit.
-// CHECK: !DISubprogram(name: "MyClass"
-// CHECK-SAME:          scope: !"_ZTS7MyClass"
-// CHECK: !DISubprogram(name: "add<2>"
-// CHECK-SAME:          scope: !"_ZTS7MyClass"
 
 template<typename T>
 struct outer {
@@ -98,3 +89,13 @@ inline void f1() {
 void f2() {
   virt<elem> d; // emit 'virt<elem>'
 }
+
+// Check that the member function template specialization and implicit special
+// members (the default ctor) refer to their class by scope, even though they
+// didn't appear in the class's member list (C_MEM). This prevents the functions
+// from being added to type units, while still appearing in the type
+// declaration/reference in the compile unit.
+// CHECK: !DISubprogram(name: "MyClass"
+// CHECK-SAME:          scope: !"_ZTS7MyClass"
+// CHECK: !DISubprogram(name: "add<2>"
+// CHECK-SAME:          scope: !"_ZTS7MyClass"

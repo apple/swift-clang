@@ -25,6 +25,7 @@ __attribute__((objc_root_class))
 @end
 
 @interface NSString : NSObject <NSCopying> // expected-note{{receiver is instance of class declared here}}
+- (void)compare:(NSString *)string;
 - (NSString *)stringByAppendingString:(NSString *)string;
 + (instancetype)string;
 @end
@@ -273,6 +274,32 @@ typedef int NSInteger;
 @end
 void test(__kindof Bar *kBar) {
     [kBar test];
+}
+
+// Make sure we don't emit warning about no method found.
+typedef signed char BOOL;
+@interface A : NSObject
+@property (readonly, getter=isActive) BOOL active;
+@end
+@interface B : NSObject
+@property (getter=isActive, readonly) BOOL active;
+@end
+void foo() {
+  __kindof B *NSApp;
+  if ([NSApp isActive]) {
+  }
+}
+
+typedef const struct CGPath *CGPathRef;
+@interface C : NSObject
+@property (copy) NSString *path;
+@end
+@interface D : NSObject
+@property CGPathRef path __attribute__((availability(macosx,unavailable)));
+@end
+// Make sure we choose "NSString *path" for [s1 path].
+void bar(id s1, id s2) {
+  return [[s1 path] compare:[s2 path]];
 }
 
 // ---------------------------------------------------------------------------

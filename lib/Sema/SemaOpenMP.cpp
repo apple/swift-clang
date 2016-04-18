@@ -376,9 +376,8 @@ public:
   }
 };
 bool isParallelOrTaskRegion(OpenMPDirectiveKind DKind) {
-  return isOpenMPParallelDirective(DKind) || DKind == OMPD_task ||
-         isOpenMPTeamsDirective(DKind) || DKind == OMPD_unknown ||
-         isOpenMPTaskLoopDirective(DKind);
+  return isOpenMPParallelDirective(DKind) || isOpenMPTaskingDirective(DKind) ||
+         isOpenMPTeamsDirective(DKind) || DKind == OMPD_unknown;
 }
 } // namespace
 
@@ -474,27 +473,24 @@ DSAStackTy::DSAVarData DSAStackTy::getDSA(StackTy::reverse_iterator& Iter,
     //  In a task construct, if no default clause is present, a variable that in
     //  the enclosing context is determined to be shared by all implicit tasks
     //  bound to the current team is shared.
-    if (DVar.DKind == OMPD_task) {
+    if (isOpenMPTaskingDirective(DVar.DKind)) {
       DSAVarData DVarTemp;
       for (StackTy::reverse_iterator I = std::next(Iter), EE = Stack.rend();
            I != EE; ++I) {
         // OpenMP [2.9.1.1, Data-sharing Attribute Rules for Variables
-        // Referenced
-        // in a Construct, implicitly determined, p.6]
+        // Referenced in a Construct, implicitly determined, p.6]
         //  In a task construct, if no default clause is present, a variable
         //  whose data-sharing attribute is not determined by the rules above is
         //  firstprivate.
         DVarTemp = getDSA(I, D);
         if (DVarTemp.CKind != OMPC_shared) {
           DVar.RefExpr = nullptr;
-          DVar.DKind = OMPD_task;
           DVar.CKind = OMPC_firstprivate;
           return DVar;
         }
         if (isParallelOrTaskRegion(I->Directive))
           break;
       }
-      DVar.DKind = OMPD_task;
       DVar.CKind =
           (DVarTemp.CKind == OMPC_unknown) ? OMPC_firstprivate : OMPC_shared;
       return DVar;
@@ -1337,7 +1333,8 @@ static void ReportOriginalDSA(Sema &SemaRef, DSAStackTy *Stack,
       Reason = PDSA_LoopIterVarLastprivate;
     else
       Reason = PDSA_LoopIterVarLinear;
-  } else if (DVar.DKind == OMPD_task && DVar.CKind == OMPC_firstprivate) {
+  } else if (isOpenMPTaskingDirective(DVar.DKind) &&
+             DVar.CKind == OMPC_firstprivate) {
     Reason = PDSA_TaskVarFirstprivate;
     ReportLoc = DVar.ImplicitDSALoc;
   } else if (VD && VD->isStaticLocal())
@@ -1406,7 +1403,7 @@ public:
                                              isOpenMPTeamsDirective(K);
                                     },
                                     false);
-      if (DKind == OMPD_task && DVar.CKind == OMPC_reduction) {
+      if (isOpenMPTaskingDirective(DKind) && DVar.CKind == OMPC_reduction) {
         ErrorFound = true;
         SemaRef.Diag(ELoc, diag::err_omp_reduction_in_task);
         ReportOriginalDSA(SemaRef, Stack, VD, DVar);
@@ -1415,7 +1412,8 @@ public:
 
       // Define implicit data-sharing attributes for task.
       DVar = Stack->getImplicitDSA(VD, false);
-      if (DKind == OMPD_task && DVar.CKind != OMPC_shared)
+      if (isOpenMPTaskingDirective(DKind) && DVar.CKind != OMPC_shared &&
+          !Stack->isLoopControlVariable(VD).first)
         ImplicitFirstprivate.push_back(E);
     }
   }
@@ -1442,7 +1440,7 @@ public:
                                             isOpenMPTeamsDirective(K);
                                    },
                                    false);
-        if (DKind == OMPD_task && DVar.CKind == OMPC_reduction) {
+        if (isOpenMPTaskingDirective(DKind) && DVar.CKind == OMPC_reduction) {
           ErrorFound = true;
           SemaRef.Diag(ELoc, diag::err_omp_reduction_in_task);
           ReportOriginalDSA(SemaRef, Stack, FD, DVar);
@@ -1451,7 +1449,8 @@ public:
 
         // Define implicit data-sharing attributes for task.
         DVar = Stack->getImplicitDSA(FD, false);
-        if (DKind == OMPD_task && DVar.CKind != OMPC_shared)
+        if (isOpenMPTaskingDirective(DKind) && DVar.CKind != OMPC_shared &&
+            !Stack->isLoopControlVariable(FD).first)
           ImplicitFirstprivate.push_back(E);
       }
     }
@@ -2763,8 +2762,7 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
       // A master region may not be closely nested inside a worksharing,
       // atomic, or explicit task region.
       NestingProhibited = isOpenMPWorksharingDirective(ParentRegion) ||
-                          ParentRegion == OMPD_task ||
-                          isOpenMPTaskLoopDirective(ParentRegion);
+                          isOpenMPTaskingDirective(ParentRegion);
     } else if (CurrentRegion == OMPD_critical && CurrentName.getName()) {
       // OpenMP [2.16, Nesting of Regions]
       // A critical region may not be nested (closely or otherwise) inside a
@@ -2798,21 +2796,21 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
       // OpenMP [2.16, Nesting of Regions]
       // A barrier region may not be closely nested inside a worksharing,
       // explicit task, critical, ordered, atomic, or master region.
-      NestingProhibited =
-          isOpenMPWorksharingDirective(ParentRegion) ||
-          ParentRegion == OMPD_task || ParentRegion == OMPD_master ||
-          ParentRegion == OMPD_critical || ParentRegion == OMPD_ordered ||
-          isOpenMPTaskLoopDirective(ParentRegion);
+      NestingProhibited = isOpenMPWorksharingDirective(ParentRegion) ||
+                          isOpenMPTaskingDirective(ParentRegion) ||
+                          ParentRegion == OMPD_master ||
+                          ParentRegion == OMPD_critical ||
+                          ParentRegion == OMPD_ordered;
     } else if (isOpenMPWorksharingDirective(CurrentRegion) &&
                !isOpenMPParallelDirective(CurrentRegion)) {
       // OpenMP [2.16, Nesting of Regions]
       // A worksharing region may not be closely nested inside a worksharing,
       // explicit task, critical, ordered, atomic, or master region.
-      NestingProhibited =
-          isOpenMPWorksharingDirective(ParentRegion) ||
-          ParentRegion == OMPD_task || ParentRegion == OMPD_master ||
-          ParentRegion == OMPD_critical || ParentRegion == OMPD_ordered ||
-          isOpenMPTaskLoopDirective(ParentRegion);
+      NestingProhibited = isOpenMPWorksharingDirective(ParentRegion) ||
+                          isOpenMPTaskingDirective(ParentRegion) ||
+                          ParentRegion == OMPD_master ||
+                          ParentRegion == OMPD_critical ||
+                          ParentRegion == OMPD_ordered;
       Recommend = ShouldBeInParallelRegion;
     } else if (CurrentRegion == OMPD_ordered) {
       // OpenMP [2.16, Nesting of Regions]
@@ -2824,8 +2822,7 @@ static bool CheckNestingOfRegions(Sema &SemaRef, DSAStackTy *Stack,
       // An ordered construct with the simd clause is the only OpenMP construct
       // that can appear in the simd region.
       NestingProhibited = ParentRegion == OMPD_critical ||
-                          ParentRegion == OMPD_task ||
-                          isOpenMPTaskLoopDirective(ParentRegion) ||
+                          isOpenMPTaskingDirective(ParentRegion) ||
                           !(isOpenMPSimdDirective(ParentRegion) ||
                             Stack->isParentOrderedRegion());
       Recommend = ShouldBeInOrderedRegion;
@@ -3190,10 +3187,14 @@ StmtResult Sema::ActOnOpenMPExecutableDirective(
   return Res;
 }
 
-Sema::DeclGroupPtrTy
-Sema::ActOnOpenMPDeclareSimdDirective(DeclGroupPtrTy DG,
-                                      OMPDeclareSimdDeclAttr::BranchStateTy BS,
-                                      Expr *Simdlen, SourceRange SR) {
+Sema::DeclGroupPtrTy Sema::ActOnOpenMPDeclareSimdDirective(
+    DeclGroupPtrTy DG, OMPDeclareSimdDeclAttr::BranchStateTy BS, Expr *Simdlen,
+    ArrayRef<Expr *> Uniforms, ArrayRef<Expr *> Aligneds,
+    ArrayRef<Expr *> Alignments, ArrayRef<Expr *> Linears,
+    ArrayRef<unsigned> LinModifiers, ArrayRef<Expr *> Steps, SourceRange SR) {
+  assert(Aligneds.size() == Alignments.size());
+  assert(Linears.size() == LinModifiers.size());
+  assert(Linears.size() == Steps.size());
   if (!DG || DG.get().isNull())
     return DeclGroupPtrTy();
 
@@ -3205,9 +3206,9 @@ Sema::ActOnOpenMPDeclareSimdDirective(DeclGroupPtrTy DG,
   if (auto *FTD = dyn_cast<FunctionTemplateDecl>(ADecl))
     ADecl = FTD->getTemplatedDecl();
 
-  if (!isa<FunctionDecl>(ADecl)) {
-    Diag(ADecl->getLocation(), diag::err_omp_function_expected)
-        << ADecl->getDeclContext()->isFileContext();
+  auto *FD = dyn_cast<FunctionDecl>(ADecl);
+  if (!FD) {
+    Diag(ADecl->getLocation(), diag::err_omp_function_expected);
     return DeclGroupPtrTy();
   }
 
@@ -3215,13 +3216,219 @@ Sema::ActOnOpenMPDeclareSimdDirective(DeclGroupPtrTy DG,
   // The parameter of the simdlen clause must be a constant positive integer
   // expression.
   ExprResult SL;
-  if (Simdlen) {
+  if (Simdlen)
     SL = VerifyPositiveIntegerConstantInClause(Simdlen, OMPC_simdlen);
-    if (SL.isInvalid())
-      return DG;
+  // OpenMP [2.8.2, declare simd construct, Description]
+  // The special this pointer can be used as if was one of the arguments to the
+  // function in any of the linear, aligned, or uniform clauses.
+  // The uniform clause declares one or more arguments to have an invariant
+  // value for all concurrent invocations of the function in the execution of a
+  // single SIMD loop.
+  llvm::DenseMap<Decl *, Expr *> UniformedArgs;
+  Expr *UniformedLinearThis = nullptr;
+  for (auto *E : Uniforms) {
+    E = E->IgnoreParenImpCasts();
+    if (auto *DRE = dyn_cast<DeclRefExpr>(E))
+      if (auto *PVD = dyn_cast<ParmVarDecl>(DRE->getDecl()))
+        if (FD->getNumParams() > PVD->getFunctionScopeIndex() &&
+            FD->getParamDecl(PVD->getFunctionScopeIndex())
+                    ->getCanonicalDecl() == PVD->getCanonicalDecl()) {
+          UniformedArgs.insert(std::make_pair(PVD->getCanonicalDecl(), E));
+          continue;
+        }
+    if (isa<CXXThisExpr>(E)) {
+      UniformedLinearThis = E;
+      continue;
+    }
+    Diag(E->getExprLoc(), diag::err_omp_param_or_this_in_clause)
+        << FD->getDeclName() << (isa<CXXMethodDecl>(ADecl) ? 1 : 0);
   }
-  auto *NewAttr =
-      OMPDeclareSimdDeclAttr::CreateImplicit(Context, BS, SL.get(), SR);
+  // OpenMP [2.8.2, declare simd construct, Description]
+  // The aligned clause declares that the object to which each list item points
+  // is aligned to the number of bytes expressed in the optional parameter of
+  // the aligned clause.
+  // The special this pointer can be used as if was one of the arguments to the
+  // function in any of the linear, aligned, or uniform clauses.
+  // The type of list items appearing in the aligned clause must be array,
+  // pointer, reference to array, or reference to pointer.
+  llvm::DenseMap<Decl *, Expr *> AlignedArgs;
+  Expr *AlignedThis = nullptr;
+  for (auto *E : Aligneds) {
+    E = E->IgnoreParenImpCasts();
+    if (auto *DRE = dyn_cast<DeclRefExpr>(E))
+      if (auto *PVD = dyn_cast<ParmVarDecl>(DRE->getDecl())) {
+        auto *CanonPVD = PVD->getCanonicalDecl();
+        if (FD->getNumParams() > PVD->getFunctionScopeIndex() &&
+            FD->getParamDecl(PVD->getFunctionScopeIndex())
+                    ->getCanonicalDecl() == CanonPVD) {
+          // OpenMP  [2.8.1, simd construct, Restrictions]
+          // A list-item cannot appear in more than one aligned clause.
+          if (AlignedArgs.count(CanonPVD) > 0) {
+            Diag(E->getExprLoc(), diag::err_omp_aligned_twice)
+                << 1 << E->getSourceRange();
+            Diag(AlignedArgs[CanonPVD]->getExprLoc(),
+                 diag::note_omp_explicit_dsa)
+                << getOpenMPClauseName(OMPC_aligned);
+            continue;
+          }
+          AlignedArgs[CanonPVD] = E;
+          QualType QTy = PVD->getType()
+                             .getNonReferenceType()
+                             .getUnqualifiedType()
+                             .getCanonicalType();
+          const Type *Ty = QTy.getTypePtrOrNull();
+          if (!Ty || (!Ty->isArrayType() && !Ty->isPointerType())) {
+            Diag(E->getExprLoc(), diag::err_omp_aligned_expected_array_or_ptr)
+                << QTy << getLangOpts().CPlusPlus << E->getSourceRange();
+            Diag(PVD->getLocation(), diag::note_previous_decl) << PVD;
+          }
+          continue;
+        }
+      }
+    if (isa<CXXThisExpr>(E)) {
+      if (AlignedThis) {
+        Diag(E->getExprLoc(), diag::err_omp_aligned_twice)
+            << 2 << E->getSourceRange();
+        Diag(AlignedThis->getExprLoc(), diag::note_omp_explicit_dsa)
+            << getOpenMPClauseName(OMPC_aligned);
+      }
+      AlignedThis = E;
+      continue;
+    }
+    Diag(E->getExprLoc(), diag::err_omp_param_or_this_in_clause)
+        << FD->getDeclName() << (isa<CXXMethodDecl>(ADecl) ? 1 : 0);
+  }
+  // The optional parameter of the aligned clause, alignment, must be a constant
+  // positive integer expression. If no optional parameter is specified,
+  // implementation-defined default alignments for SIMD instructions on the
+  // target platforms are assumed.
+  SmallVector<Expr *, 4> NewAligns;
+  for (auto *E : Alignments) {
+    ExprResult Align;
+    if (E)
+      Align = VerifyPositiveIntegerConstantInClause(E, OMPC_aligned);
+    NewAligns.push_back(Align.get());
+  }
+  // OpenMP [2.8.2, declare simd construct, Description]
+  // The linear clause declares one or more list items to be private to a SIMD
+  // lane and to have a linear relationship with respect to the iteration space
+  // of a loop.
+  // The special this pointer can be used as if was one of the arguments to the
+  // function in any of the linear, aligned, or uniform clauses.
+  // When a linear-step expression is specified in a linear clause it must be
+  // either a constant integer expression or an integer-typed parameter that is
+  // specified in a uniform clause on the directive.
+  llvm::DenseMap<Decl *, Expr *> LinearArgs;
+  const bool IsUniformedThis = UniformedLinearThis != nullptr;
+  auto MI = LinModifiers.begin();
+  for (auto *E : Linears) {
+    auto LinKind = static_cast<OpenMPLinearClauseKind>(*MI);
+    ++MI;
+    E = E->IgnoreParenImpCasts();
+    if (auto *DRE = dyn_cast<DeclRefExpr>(E))
+      if (auto *PVD = dyn_cast<ParmVarDecl>(DRE->getDecl())) {
+        auto *CanonPVD = PVD->getCanonicalDecl();
+        if (FD->getNumParams() > PVD->getFunctionScopeIndex() &&
+            FD->getParamDecl(PVD->getFunctionScopeIndex())
+                    ->getCanonicalDecl() == CanonPVD) {
+          // OpenMP  [2.15.3.7, linear Clause, Restrictions]
+          // A list-item cannot appear in more than one linear clause.
+          if (LinearArgs.count(CanonPVD) > 0) {
+            Diag(E->getExprLoc(), diag::err_omp_wrong_dsa)
+                << getOpenMPClauseName(OMPC_linear)
+                << getOpenMPClauseName(OMPC_linear) << E->getSourceRange();
+            Diag(LinearArgs[CanonPVD]->getExprLoc(),
+                 diag::note_omp_explicit_dsa)
+                << getOpenMPClauseName(OMPC_linear);
+            continue;
+          }
+          // Each argument can appear in at most one uniform or linear clause.
+          if (UniformedArgs.count(CanonPVD) > 0) {
+            Diag(E->getExprLoc(), diag::err_omp_wrong_dsa)
+                << getOpenMPClauseName(OMPC_linear)
+                << getOpenMPClauseName(OMPC_uniform) << E->getSourceRange();
+            Diag(UniformedArgs[CanonPVD]->getExprLoc(),
+                 diag::note_omp_explicit_dsa)
+                << getOpenMPClauseName(OMPC_uniform);
+            continue;
+          }
+          LinearArgs[CanonPVD] = E;
+          if (E->isValueDependent() || E->isTypeDependent() ||
+              E->isInstantiationDependent() ||
+              E->containsUnexpandedParameterPack())
+            continue;
+          (void)CheckOpenMPLinearDecl(CanonPVD, E->getExprLoc(), LinKind,
+                                      PVD->getOriginalType());
+          continue;
+        }
+      }
+    if (isa<CXXThisExpr>(E)) {
+      if (UniformedLinearThis) {
+        Diag(E->getExprLoc(), diag::err_omp_wrong_dsa)
+            << getOpenMPClauseName(OMPC_linear)
+            << getOpenMPClauseName(IsUniformedThis ? OMPC_uniform : OMPC_linear)
+            << E->getSourceRange();
+        Diag(UniformedLinearThis->getExprLoc(), diag::note_omp_explicit_dsa)
+            << getOpenMPClauseName(IsUniformedThis ? OMPC_uniform
+                                                   : OMPC_linear);
+        continue;
+      }
+      UniformedLinearThis = E;
+      if (E->isValueDependent() || E->isTypeDependent() ||
+          E->isInstantiationDependent() || E->containsUnexpandedParameterPack())
+        continue;
+      (void)CheckOpenMPLinearDecl(/*D=*/nullptr, E->getExprLoc(), LinKind,
+                                  E->getType());
+      continue;
+    }
+    Diag(E->getExprLoc(), diag::err_omp_param_or_this_in_clause)
+        << FD->getDeclName() << (isa<CXXMethodDecl>(ADecl) ? 1 : 0);
+  }
+  Expr *Step = nullptr;
+  Expr *NewStep = nullptr;
+  SmallVector<Expr *, 4> NewSteps;
+  for (auto *E : Steps) {
+    // Skip the same step expression, it was checked already.
+    if (Step == E || !E) {
+      NewSteps.push_back(E ? NewStep : nullptr);
+      continue;
+    }
+    Step = E;
+    if (auto *DRE = dyn_cast<DeclRefExpr>(Step))
+      if (auto *PVD = dyn_cast<ParmVarDecl>(DRE->getDecl())) {
+        auto *CanonPVD = PVD->getCanonicalDecl();
+        if (UniformedArgs.count(CanonPVD) == 0) {
+          Diag(Step->getExprLoc(), diag::err_omp_expected_uniform_param)
+              << Step->getSourceRange();
+        } else if (E->isValueDependent() || E->isTypeDependent() ||
+                   E->isInstantiationDependent() ||
+                   E->containsUnexpandedParameterPack() ||
+                   CanonPVD->getType()->hasIntegerRepresentation())
+          NewSteps.push_back(Step);
+        else {
+          Diag(Step->getExprLoc(), diag::err_omp_expected_int_param)
+              << Step->getSourceRange();
+        }
+        continue;
+      }
+    NewStep = Step;
+    if (Step && !Step->isValueDependent() && !Step->isTypeDependent() &&
+        !Step->isInstantiationDependent() &&
+        !Step->containsUnexpandedParameterPack()) {
+      NewStep = PerformOpenMPImplicitIntegerConversion(Step->getExprLoc(), Step)
+                    .get();
+      if (NewStep)
+        NewStep = VerifyIntegerConstantExpression(NewStep).get();
+    }
+    NewSteps.push_back(NewStep);
+  }
+  auto *NewAttr = OMPDeclareSimdDeclAttr::CreateImplicit(
+      Context, BS, SL.get(), const_cast<Expr **>(Uniforms.data()),
+      Uniforms.size(), const_cast<Expr **>(Aligneds.data()), Aligneds.size(),
+      const_cast<Expr **>(NewAligns.data()), NewAligns.size(),
+      const_cast<Expr **>(Linears.data()), Linears.size(),
+      const_cast<unsigned *>(LinModifiers.data()), LinModifiers.size(),
+      NewSteps.data(), NewSteps.size(), SR);
   ADecl->addAttr(NewAttr);
   return ConvertDeclToDeclGroup(ADecl);
 }
@@ -6386,6 +6593,7 @@ OMPClause *Sema::ActOnOpenMPSingleExprClause(OpenMPClauseKind Kind, Expr *Expr,
   case OMPC_dist_schedule:
   case OMPC_defaultmap:
   case OMPC_unknown:
+  case OMPC_uniform:
     llvm_unreachable("Clause is not allowed.");
   }
   return Res;
@@ -6671,6 +6879,7 @@ OMPClause *Sema::ActOnOpenMPSimpleClause(
   case OMPC_dist_schedule:
   case OMPC_defaultmap:
   case OMPC_unknown:
+  case OMPC_uniform:
     llvm_unreachable("Clause is not allowed.");
   }
   return Res;
@@ -6821,6 +7030,7 @@ OMPClause *Sema::ActOnOpenMPSingleExprWithArgClause(
   case OMPC_num_tasks:
   case OMPC_hint:
   case OMPC_unknown:
+  case OMPC_uniform:
     llvm_unreachable("Clause is not allowed.");
   }
   return Res;
@@ -7004,6 +7214,7 @@ OMPClause *Sema::ActOnOpenMPClause(OpenMPClauseKind Kind,
   case OMPC_dist_schedule:
   case OMPC_defaultmap:
   case OMPC_unknown:
+  case OMPC_uniform:
     llvm_unreachable("Clause is not allowed.");
   }
   return Res;
@@ -7149,6 +7360,7 @@ OMPClause *Sema::ActOnOpenMPVarListClause(
   case OMPC_dist_schedule:
   case OMPC_defaultmap:
   case OMPC_unknown:
+  case OMPC_uniform:
     llvm_unreachable("Clause is not allowed.");
   }
   return Res;
@@ -7280,7 +7492,7 @@ OMPClause *Sema::ActOnOpenMPPrivateClause(ArrayRef<Expr *> VarList,
 
     // Variably modified types are not supported for tasks.
     if (!Type->isAnyPointerType() && Type->isVariablyModifiedType() &&
-        DSAStack->getCurrentDirective() == OMPD_task) {
+        isOpenMPTaskingDirective(DSAStack->getCurrentDirective())) {
       Diag(ELoc, diag::err_omp_variably_modified_type_not_supported)
           << getOpenMPClauseName(OMPC_private) << Type
           << getOpenMPDirectiveName(DSAStack->getCurrentDirective());
@@ -7478,7 +7690,7 @@ OMPClause *Sema::ActOnOpenMPFirstprivateClause(ArrayRef<Expr *> VarList,
       //  construct must not appear in a firstprivate clause in a task construct
       //  encountered during execution of any of the worksharing regions arising
       //  from the worksharing construct.
-      if (CurrDir == OMPD_task) {
+      if (isOpenMPTaskingDirective(CurrDir)) {
         DVar =
             DSAStack->hasInnermostDSA(D, MatchesAnyClause(OMPC_reduction),
                                       [](OpenMPDirectiveKind K) -> bool {
@@ -7555,7 +7767,7 @@ OMPClause *Sema::ActOnOpenMPFirstprivateClause(ArrayRef<Expr *> VarList,
 
     // Variably modified types are not supported for tasks.
     if (!Type->isAnyPointerType() && Type->isVariablyModifiedType() &&
-        DSAStack->getCurrentDirective() == OMPD_task) {
+        isOpenMPTaskingDirective(DSAStack->getCurrentDirective())) {
       Diag(ELoc, diag::err_omp_variably_modified_type_not_supported)
           << getOpenMPClauseName(OMPC_firstprivate) << Type
           << getOpenMPDirectiveName(DSAStack->getCurrentDirective());
@@ -8563,6 +8775,65 @@ OMPClause *Sema::ActOnOpenMPReductionClause(
       buildPostUpdate(*this, ExprPostUpdates));
 }
 
+bool Sema::CheckOpenMPLinearModifier(OpenMPLinearClauseKind LinKind,
+                                     SourceLocation LinLoc) {
+  if ((!LangOpts.CPlusPlus && LinKind != OMPC_LINEAR_val) ||
+      LinKind == OMPC_LINEAR_unknown) {
+    Diag(LinLoc, diag::err_omp_wrong_linear_modifier) << LangOpts.CPlusPlus;
+    return true;
+  }
+  return false;
+}
+
+bool Sema::CheckOpenMPLinearDecl(ValueDecl *D, SourceLocation ELoc,
+                                 OpenMPLinearClauseKind LinKind,
+                                 QualType Type) {
+  auto *VD = dyn_cast_or_null<VarDecl>(D);
+  // A variable must not have an incomplete type or a reference type.
+  if (RequireCompleteType(ELoc, Type, diag::err_omp_linear_incomplete_type))
+    return true;
+  if ((LinKind == OMPC_LINEAR_uval || LinKind == OMPC_LINEAR_ref) &&
+      !Type->isReferenceType()) {
+    Diag(ELoc, diag::err_omp_wrong_linear_modifier_non_reference)
+        << Type << getOpenMPSimpleClauseTypeName(OMPC_linear, LinKind);
+    return true;
+  }
+  Type = Type.getNonReferenceType();
+
+  // A list item must not be const-qualified.
+  if (Type.isConstant(Context)) {
+    Diag(ELoc, diag::err_omp_const_variable)
+        << getOpenMPClauseName(OMPC_linear);
+    if (D) {
+      bool IsDecl =
+          !VD ||
+          VD->isThisDeclarationADefinition(Context) == VarDecl::DeclarationOnly;
+      Diag(D->getLocation(),
+           IsDecl ? diag::note_previous_decl : diag::note_defined_here)
+          << D;
+    }
+    return true;
+  }
+
+  // A list item must be of integral or pointer type.
+  Type = Type.getUnqualifiedType().getCanonicalType();
+  const auto *Ty = Type.getTypePtrOrNull();
+  if (!Ty || (!Ty->isDependentType() && !Ty->isIntegralType(Context) &&
+              !Ty->isPointerType())) {
+    Diag(ELoc, diag::err_omp_linear_expected_int_or_ptr) << Type;
+    if (D) {
+      bool IsDecl =
+          !VD ||
+          VD->isThisDeclarationADefinition(Context) == VarDecl::DeclarationOnly;
+      Diag(D->getLocation(),
+           IsDecl ? diag::note_previous_decl : diag::note_defined_here)
+          << D;
+    }
+    return true;
+  }
+  return false;
+}
+
 OMPClause *Sema::ActOnOpenMPLinearClause(
     ArrayRef<Expr *> VarList, Expr *Step, SourceLocation StartLoc,
     SourceLocation LParenLoc, OpenMPLinearClauseKind LinKind,
@@ -8572,11 +8843,8 @@ OMPClause *Sema::ActOnOpenMPLinearClause(
   SmallVector<Expr *, 8> Inits;
   SmallVector<Decl *, 4> ExprCaptures;
   SmallVector<Expr *, 4> ExprPostUpdates;
-  if ((!LangOpts.CPlusPlus && LinKind != OMPC_LINEAR_val) ||
-      LinKind == OMPC_LINEAR_unknown) {
-    Diag(LinLoc, diag::err_omp_wrong_linear_modifier) << LangOpts.CPlusPlus;
+  if (CheckOpenMPLinearModifier(LinKind, LinLoc))
     LinKind = OMPC_LINEAR_val;
-  }
   for (auto &RefExpr : VarList) {
     assert(RefExpr && "NULL expr in OpenMP linear clause.");
     SourceLocation ELoc;
@@ -8609,45 +8877,9 @@ OMPClause *Sema::ActOnOpenMPLinearClause(
       continue;
     }
 
-    // A variable must not have an incomplete type or a reference type.
-    if (RequireCompleteType(ELoc, Type,
-                            diag::err_omp_linear_incomplete_type))
+    if (CheckOpenMPLinearDecl(D, ELoc, LinKind, Type))
       continue;
-    if ((LinKind == OMPC_LINEAR_uval || LinKind == OMPC_LINEAR_ref) &&
-        !Type->isReferenceType()) {
-      Diag(ELoc, diag::err_omp_wrong_linear_modifier_non_reference)
-          << Type << getOpenMPSimpleClauseTypeName(OMPC_linear, LinKind);
-      continue;
-    }
-    Type = Type.getNonReferenceType();
-
-    // A list item must not be const-qualified.
-    if (Type.isConstant(Context)) {
-      Diag(ELoc, diag::err_omp_const_variable)
-          << getOpenMPClauseName(OMPC_linear);
-      bool IsDecl =
-          !VD ||
-          VD->isThisDeclarationADefinition(Context) == VarDecl::DeclarationOnly;
-      Diag(D->getLocation(),
-           IsDecl ? diag::note_previous_decl : diag::note_defined_here)
-          << D;
-      continue;
-    }
-
-    // A list item must be of integral or pointer type.
-    Type = Type.getUnqualifiedType().getCanonicalType();
-    const auto *Ty = Type.getTypePtrOrNull();
-    if (!Ty || (!Ty->isDependentType() && !Ty->isIntegralType(Context) &&
-                !Ty->isPointerType())) {
-      Diag(ELoc, diag::err_omp_linear_expected_int_or_ptr) << Type;
-      bool IsDecl =
-          !VD ||
-          VD->isThisDeclarationADefinition(Context) == VarDecl::DeclarationOnly;
-      Diag(D->getLocation(),
-           IsDecl ? diag::note_previous_decl : diag::note_defined_here)
-          << D;
-      continue;
-    }
+    Type = Type.getNonReferenceType().getUnqualifiedType().getCanonicalType();
 
     // Build private copy of original var.
     auto *Private = buildVarDecl(*this, ELoc, Type, D->getName(),
@@ -8838,7 +9070,7 @@ OMPClause *Sema::ActOnOpenMPAlignedClause(
     // OpenMP  [2.8.1, simd construct, Restrictions]
     // A list-item cannot appear in more than one aligned clause.
     if (Expr *PrevRef = DSAStack->addUniqueAligned(D, SimpleRefExpr)) {
-      Diag(ELoc, diag::err_omp_aligned_twice) << ERange;
+      Diag(ELoc, diag::err_omp_aligned_twice) << 0 << ERange;
       Diag(PrevRef->getExprLoc(), diag::note_omp_explicit_dsa)
           << getOpenMPClauseName(OMPC_aligned);
       continue;

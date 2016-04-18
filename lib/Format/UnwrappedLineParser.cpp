@@ -430,6 +430,9 @@ void UnwrappedLineParser::parseBlock(bool MustBeDeclaration, bool AddLevel,
     ++Line->Level;
   parseLevel(/*HasOpeningBrace=*/true);
 
+  if (eof())
+    return;
+
   if (MacroBlock ? !FormatTok->is(TT_MacroBlockEnd)
                  : !FormatTok->is(tok::r_brace)) {
     Line->Level = InitialLevel;
@@ -715,6 +718,13 @@ void UnwrappedLineParser::readTokenWithJavaScriptASI() {
     return;
 
   bool PreviousMustBeValue = mustBeJSIdentOrValue(Keywords, Previous);
+  if (PreviousMustBeValue && Line && Line->Tokens.size() > 1) {
+    // If the token before the previous one is an '@', the previous token is an
+    // annotation and can precede another identifier/value.
+    const FormatToken *PrePrevious = std::prev(Line->Tokens.end(), 2)->Tok;
+    if (PrePrevious->is(tok::at))
+      return;
+  }
   if (Next->is(tok::exclaim) && PreviousMustBeValue)
     addUnwrappedLine();
   bool NextMustBeValue = mustBeJSIdentOrValue(Keywords, Next);

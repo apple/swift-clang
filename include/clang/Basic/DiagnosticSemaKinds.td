@@ -2100,6 +2100,9 @@ def err_variable_concept_bool_decl : Error<
 def err_concept_specified_specialization : Error<
   "'concept' cannot be applied on an "
   "%select{explicit instantiation|explicit specialization|partial specialization}0">;
+def err_concept_specialized : Error<
+  "%select{function|variable}0 concept cannot be "
+  "%select{explicitly instantiated|explicitly specialized|partially specialized}1">;
 
 // C++11 char16_t/char32_t
 def warn_cxx98_compat_unicode_type : Warning<
@@ -2463,17 +2466,21 @@ def err_attribute_weakref_without_alias : Error<
 def err_alias_not_supported_on_darwin : Error <
   "only weak aliases are supported on darwin">;
 def err_alias_to_undefined : Error<
-  "alias must point to a defined variable or function">;
+  "%select{alias|ifunc}0 must point to a defined %select{variable or |}1function">;
 def warn_alias_to_weak_alias : Warning<
-  "alias will always resolve to %0 even if weak definition of alias %1 is overridden">,
+  "%select{alias|ifunc}2 will always resolve to %0 even if weak definition of %1 is overridden">,
   InGroup<IgnoredAttributes>;
 def warn_alias_with_section : Warning<
-  "alias will not be in section '%0' but in the same section as the aliasee">,
+  "%select{alias|ifunc}1 will not be in section '%0' but in the same section as the %select{aliasee|resolver}2">,
   InGroup<IgnoredAttributes>;
 def err_duplicate_mangled_name : Error<
   "definition with same mangled name as another definition">;
 def err_cyclic_alias : Error<
-  "alias definition is part of a cycle">;
+  "%select{alias|ifunc}0 definition is part of a cycle">;
+def err_ifunc_resolver_return : Error<
+  "ifunc resolver function must return a pointer">;
+def err_ifunc_resolver_params : Error<
+  "ifunc resolver function must have no parameters">;
 def warn_attribute_wrong_decl_type : Warning<
   "%0 attribute only applies to %select{functions|unions|"
   "variables and functions|functions and methods|parameters|"
@@ -4218,7 +4225,7 @@ def err_redefinition : Error<"redefinition of %0">;
 def err_alias_after_tentative :
   Error<"alias definition of %0 after tentative definition">;
 def err_alias_is_definition :
-  Error<"definition %0 cannot also be an alias">;
+  Error<"definition %0 cannot also be an %select{alias|ifunc}1">;
 def err_definition_of_implicitly_declared_member : Error<
   "definition of implicitly declared %select{default constructor|copy "
   "constructor|move constructor|copy assignment operator|move assignment "
@@ -5394,7 +5401,9 @@ def ext_typecheck_comparison_of_distinct_pointers_nonstandard : ExtWarn<
   "composite pointer type %2">, InGroup<CompareDistinctPointerType>;
 def err_typecheck_op_on_nonoverlapping_address_space_pointers : Error<
   "%select{comparison between %diff{ ($ and $)|}0,1"
-  "|arithmetic operation with operands of type %diff{ ($ and $)|}0,1}2"
+  "|arithmetic operation with operands of type %diff{ ($ and $)|}0,1"
+  "|conditional operator with the second and third operands of type "
+  "%diff{ ($ and $)|}0,1}2"
   " which are pointers to non-overlapping address spaces">;
 
 def err_typecheck_assign_const : Error<
@@ -5664,6 +5673,16 @@ def note_parameter_here : Note<
   "passing argument to parameter here">;
 def note_method_return_type_change : Note<
   "compiler has implicitly changed method %0 return type">;
+
+def warn_impl_required_for_class_property : Warning<
+  "class property %0 requires method %1 to be defined - "
+  "use @dynamic or provide a method implementation "
+  "in this class implementation">,
+  InGroup<ObjCPropertyImpl>;
+def warn_impl_required_in_category_for_class_property : Warning<
+  "class property %0 requires method %1 to be defined - "
+  "use @dynamic or provide a method implementation in this category">,
+  InGroup<ObjCPropertyImpl>;
 
 // C++ casts
 // These messages adhere to the TryCast pattern: %0 is an int specifying the
@@ -6508,9 +6527,6 @@ def err_global_call_not_config : Error<
 def err_ref_bad_target : Error<
   "reference to %select{__device__|__global__|__host__|__host__ __device__}0 "
   "function %1 in %select{__device__|__global__|__host__|__host__ __device__}2 function">;
-def warn_host_calls_from_host_device : Warning<
-  "calling __host__ function %0 from __host__ __device__ function %1 can lead to runtime errors">,
-  InGroup<CudaCompat>;
 def warn_kern_is_method : Extension<
   "kernel function %0 is a member function; this may not be accepted by nvcc">,
   InGroup<CudaCompat>;
@@ -7976,7 +7992,7 @@ def err_omp_aligned_expected_array_or_ptr : Error<
   "%select{ or pointer|, pointer, reference to array or reference to pointer}1"
   ", not %0">;
 def err_omp_aligned_twice : Error<
-  "a variable cannot appear in more than one aligned clause">;
+  "%select{a variable|a parameter|'this'}0 cannot appear in more than one aligned clause">;
 def err_omp_local_var_in_threadprivate_init : Error<
   "variable with local storage in initial value of threadprivate variable">;
 def err_omp_loop_not_canonical_init : Error<
@@ -8205,7 +8221,13 @@ def err_omp_schedule_nonmonotonic_ordered : Error<
 def err_omp_ordered_simd : Error<
   "'ordered' clause with a parameter can not be specified in '#pragma omp %0' directive">;
 def err_omp_variable_in_map_and_dsa : Error<
-  "%0 variable cannot be in a map clause in '#pragma omp %1' directive">; 
+  "%0 variable cannot be in a map clause in '#pragma omp %1' directive">;
+def err_omp_param_or_this_in_clause : Error<
+  "expected reference to one of the parameters of function %0%select{| or 'this'}1">;
+def err_omp_expected_uniform_param : Error<
+  "expected a reference to a parameter specified in a 'uniform' clause">;
+def err_omp_expected_int_param : Error<
+  "expected a reference to an integer-typed parameter">;
 } // end of OpenMP category
 
 let CategoryName = "Related Result Type Issue" in {

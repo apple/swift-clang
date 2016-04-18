@@ -49,14 +49,7 @@ namespace clang {
       if (!Code)
         llvm::report_fatal_error(StringRef("unexpected declaration kind '") +
             D->getDeclKindName() + "'");
-
-      auto Offset = Record.Emit(Code, AbbrevToUse);
-
-      // Flush any base specifiers and ctor initializers that
-      // were written as part of this declaration.
-      Writer.FlushPendingAfterDecl();
-
-      return Offset;
+      return Record.Emit(Code, AbbrevToUse);
     }
 
     void Visit(Decl *D);
@@ -125,8 +118,7 @@ namespace clang {
     void VisitCapturedDecl(CapturedDecl *D);
     void VisitEmptyDecl(EmptyDecl *D);
 
-    void VisitDeclContext(DeclContext *DC, uint64_t LexicalOffset,
-                          uint64_t VisibleOffset);
+    void VisitDeclContext(DeclContext *DC);
     template <typename T> void VisitRedeclarable(Redeclarable<T> *D);
 
 
@@ -148,12 +140,6 @@ namespace clang {
     void VisitOMPThreadPrivateDecl(OMPThreadPrivateDecl *D);
     void VisitOMPDeclareReductionDecl(OMPDeclareReductionDecl *D);
     void VisitOMPCapturedExprDecl(OMPCapturedExprDecl *D);
-
-    void AddLocalOffset(uint64_t LocalOffset) {
-      uint64_t Offset = Writer.Stream.GetCurrentBitNo();
-      assert(LocalOffset < Offset && "invalid offset");
-      Record.push_back(LocalOffset ? Offset - LocalOffset : 0);
-    }
 
     /// Add an Objective-C type parameter list to the given record.
     void AddObjCTypeParamList(ObjCTypeParamList *typeParams) {
@@ -284,6 +270,12 @@ void ASTDeclWriter::Visit(Decl *D) {
     if (FD->doesThisDeclarationHaveABody())
       Record.AddFunctionDefinition(FD);
   }
+
+  // If this declaration is also a DeclContext, write blocks for the
+  // declarations that lexically stored inside its context and those
+  // declarations that are visible from its context.
+  if (DeclContext *DC = dyn_cast<DeclContext>(D))
+    VisitDeclContext(DC);
 }
 
 void ASTDeclWriter::VisitDecl(Decl *D) {
@@ -824,7 +816,7 @@ void ASTDeclWriter::VisitObjCImplementationDecl(ObjCImplementationDecl *D) {
   Record.push_back(D->hasDestructors());
   Record.push_back(D->NumIvarInitializers);
   if (D->NumIvarInitializers)
-    Record.AddCXXCtorInitializersRef(
+    Record.AddCXXCtorInitializers(
         llvm::makeArrayRef(D->init_begin(), D->init_end()));
   Code = serialization::DECL_OBJC_IMPLEMENTATION;
 }
@@ -1543,20 +1535,9 @@ void ASTDeclWriter::VisitStaticAssertDecl(StaticAssertDecl *D) {
 }
 
 /// \brief Emit the DeclContext part of a declaration context decl.
-///
-/// \param LexicalOffset the offset at which the DECL_CONTEXT_LEXICAL
-/// block for this declaration context is stored. May be 0 to indicate
-/// that there are no declarations stored within this context.
-///
-/// \param VisibleOffset the offset at which the DECL_CONTEXT_VISIBLE
-/// block for this declaration context is stored. May be 0 to indicate
-/// that there are no declarations visible from this context. Note
-/// that this value will not be emitted for non-primary declaration
-/// contexts.
-void ASTDeclWriter::VisitDeclContext(DeclContext *DC, uint64_t LexicalOffset,
-                                     uint64_t VisibleOffset) {
-  AddLocalOffset(LexicalOffset);
-  AddLocalOffset(VisibleOffset);
+void ASTDeclWriter::VisitDeclContext(DeclContext *DC) {
+  Record.AddOffset(Writer.WriteDeclContextLexicalBlock(Context, DC));
+  Record.AddOffset(Writer.WriteDeclContextVisibleBlock(Context, DC));
 }
 
 const Decl *ASTWriter::getFirstLocalDecl(const Decl *D) {
@@ -1624,9 +1605,8 @@ void ASTDeclWriter::VisitRedeclarable(Redeclarable<T> *D) {
       // the declaration itself.
       if (LocalRedecls.empty())
         Record.push_back(0);
-      else {
-        AddLocalOffset(LocalRedeclWriter.Emit(LOCAL_REDECLARATIONS));
-      }
+      else
+        Record.AddOffset(LocalRedeclWriter.Emit(LOCAL_REDECLARATIONS));
     } else {
       Record.push_back(0);
       Record.AddDeclRef(FirstLocal);
@@ -2148,26 +2128,12 @@ void ASTWriter::WriteDecl(ASTContext &Context, Decl *D) {
   ID = IDR;
 
   assert(ID >= FirstDeclID && "invalid decl ID");
-
-  // If this declaration is also a DeclContext, write blocks for the
-  // declarations that lexically stored inside its context and those
-  // declarations that are visible from its context. These blocks
-  // are written before the declaration itself so that we can put
-  // their offsets into the record for the declaration.
-  uint64_t LexicalOffset = 0;
-  uint64_t VisibleOffset = 0;
-  DeclContext *DC = dyn_cast<DeclContext>(D);
-  if (DC) {
-    LexicalOffset = WriteDeclContextLexicalBlock(Context, DC);
-    VisibleOffset = WriteDeclContextVisibleBlock(Context, DC);
-  }
   
   RecordData Record;
   ASTDeclWriter W(*this, Context, Record);
 
   // Build a record for this declaration
   W.Visit(D);
-  if (DC) W.VisitDeclContext(DC, LexicalOffset, VisibleOffset);
 
   // Emit this declaration to the bitstream.
   uint64_t Offset = W.Emit(D);
@@ -2204,7 +2170,7 @@ void ASTRecordWriter::AddFunctionDefinition(const FunctionDecl *FD) {
   if (auto *CD = dyn_cast<CXXConstructorDecl>(FD)) {
     Record->push_back(CD->getNumCtorInitializers());
     if (CD->getNumCtorInitializers())
-      AddCXXCtorInitializersRef(
+      AddCXXCtorInitializers(
           llvm::makeArrayRef(CD->init_begin(), CD->init_end()));
   }
   AddStmt(FD->getBody());

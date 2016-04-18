@@ -3053,28 +3053,6 @@ ASTReader::ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities) {
       F.ObjCCategories.swap(Record);
       break;
 
-    case CXX_BASE_SPECIFIER_OFFSETS: {
-      if (F.LocalNumCXXBaseSpecifiers != 0) {
-        Error("duplicate CXX_BASE_SPECIFIER_OFFSETS record in AST file");
-        return Failure;
-      }
-
-      F.LocalNumCXXBaseSpecifiers = Record[0];
-      F.CXXBaseSpecifiersOffsets = (const uint32_t *)Blob.data();
-      break;
-    }
-
-    case CXX_CTOR_INITIALIZERS_OFFSETS: {
-      if (F.LocalNumCXXCtorInitializers != 0) {
-        Error("duplicate CXX_CTOR_INITIALIZERS_OFFSETS record in AST file");
-        return Failure;
-      }
-
-      F.LocalNumCXXCtorInitializers = Record[0];
-      F.CXXCtorInitializersOffsets = (const uint32_t *)Blob.data();
-      break;
-    }
-
     case DIAG_PRAGMA_MAPPINGS:
       if (F.PragmaDiagMappings.empty())
         F.PragmaDiagMappings.swap(Record);
@@ -6094,42 +6072,11 @@ QualType ASTReader::GetType(TypeID ID) {
     case PREDEF_TYPE_OBJC_SEL:
       T = Context.ObjCBuiltinSelTy;
       break;
-    case PREDEF_TYPE_IMAGE1D_ID:
-      T = Context.OCLImage1dTy;
+#define IMAGE_TYPE(ImgType, Id, SingletonId, Access, Suffix) \
+    case PREDEF_TYPE_##Id##_ID: \
+      T = Context.SingletonId; \
       break;
-    case PREDEF_TYPE_IMAGE1D_ARR_ID:
-      T = Context.OCLImage1dArrayTy;
-      break;
-    case PREDEF_TYPE_IMAGE1D_BUFF_ID:
-      T = Context.OCLImage1dBufferTy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_ID:
-      T = Context.OCLImage2dTy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_ARR_ID:
-      T = Context.OCLImage2dArrayTy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_DEP_ID:
-      T = Context.OCLImage2dDepthTy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_ARR_DEP_ID:
-      T = Context.OCLImage2dArrayDepthTy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_MSAA_ID:
-      T = Context.OCLImage2dMSAATy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_ARR_MSAA_ID:
-      T = Context.OCLImage2dArrayMSAATy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_MSAA_DEP_ID:
-      T = Context.OCLImage2dMSAADepthTy;
-      break;
-    case PREDEF_TYPE_IMAGE2D_ARR_MSAA_DEPTH_ID:
-      T = Context.OCLImage2dArrayMSAADepthTy;
-      break;
-    case PREDEF_TYPE_IMAGE3D_ID:
-      T = Context.OCLImage3dTy;
-      break;
+#include "clang/Basic/OpenCLImageTypes.def"
     case PREDEF_TYPE_SAMPLER_ID:
       T = Context.OCLSamplerTy;
       break;
@@ -6333,18 +6280,6 @@ void ASTReader::CompleteRedeclChain(const Decl *D) {
   }
 }
 
-uint64_t ASTReader::ReadCXXCtorInitializersRef(ModuleFile &M,
-                                               const RecordData &Record,
-                                               unsigned &Idx) {
-  if (Idx >= Record.size() || Record[Idx] > M.LocalNumCXXCtorInitializers) {
-    Error("malformed AST file: missing C++ ctor initializers");
-    return 0;
-  }
-
-  unsigned LocalID = Record[Idx++];
-  return getGlobalBitOffset(M, M.CXXCtorInitializersOffsets[LocalID - 1]);
-}
-
 CXXCtorInitializer **
 ASTReader::GetExternalCXXCtorInitializers(uint64_t Offset) {
   RecordLocation Loc = getLocalBitOffset(Offset);
@@ -6363,18 +6298,6 @@ ASTReader::GetExternalCXXCtorInitializers(uint64_t Offset) {
 
   unsigned Idx = 0;
   return ReadCXXCtorInitializers(*Loc.F, Record, Idx);
-}
-
-uint64_t ASTReader::readCXXBaseSpecifiers(ModuleFile &M,
-                                          const RecordData &Record,
-                                          unsigned &Idx) {
-  if (Idx >= Record.size() || Record[Idx] > M.LocalNumCXXBaseSpecifiers) {
-    Error("malformed AST file: missing C++ base specifier");
-    return 0;
-  }
-
-  unsigned LocalID = Record[Idx++];
-  return getGlobalBitOffset(M, M.CXXBaseSpecifiersOffsets[LocalID - 1]);
 }
 
 CXXBaseSpecifier *ASTReader::GetExternalCXXBaseSpecifiers(uint64_t Offset) {

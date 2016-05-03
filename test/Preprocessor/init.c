@@ -88,7 +88,6 @@
 // COMMON:#define __ORDER_LITTLE_ENDIAN__ 1234
 // COMMON:#define __ORDER_PDP_ENDIAN__ 3412
 // COMMON:#define __STDC_HOSTED__ 1
-// COMMON:#define __STDC_VERSION__ 201112L
 // COMMON:#define __STDC__ 1
 // COMMON:#define __VERSION__ {{.*}}
 // COMMON:#define __clang__ 1
@@ -98,7 +97,13 @@
 // COMMON:#define __clang_version__ {{.*}}
 // COMMON:#define __llvm__ 1
 //
+// RUN: %clang_cc1 -E -dM -triple=x86_64-pc-win32 < /dev/null | FileCheck -match-full-lines -check-prefix C-DEFAULT %s
+// RUN: %clang_cc1 -E -dM -triple=x86_64-pc-linux-gnu < /dev/null | FileCheck -match-full-lines -check-prefix C-DEFAULT %s
+// RUN: %clang_cc1 -E -dM -triple=x86_64-apple-darwin < /dev/null | FileCheck -match-full-lines -check-prefix C-DEFAULT %s
+// RUN: %clang_cc1 -E -dM -triple=armv7a-apple-darwin < /dev/null | FileCheck -match-full-lines -check-prefix C-DEFAULT %s
 // 
+// C-DEFAULT:#define __STDC_VERSION__ 201112L
+//
 // RUN: %clang_cc1 -ffreestanding -E -dM < /dev/null | FileCheck -match-full-lines -check-prefix FREESTANDING %s
 // FREESTANDING:#define __STDC_HOSTED__ 0
 //
@@ -2161,6 +2166,9 @@
 // ARM-NETBSD:#define __WINT_WIDTH__ 32
 // ARM-NETBSD:#define __arm 1
 // ARM-NETBSD:#define __arm__ 1
+
+// RUN: %clang_cc1 -E -dM -ffreestanding -triple=arm-none-eabi < /dev/null | FileCheck -match-full-lines -check-prefix ARM-NONE-EABI %s
+// ARM-NONE-EABI: #define __ELF__ 1
 
 // RUN: %clang -target arm-apple-darwin-eabi -arch armv7s -x c -E -dM %s -o - | FileCheck -match-full-lines --check-prefix=ARM-DARWIN-NO-EABI %s
 // RUN: %clang -target arm-apple-darwin-eabi -arch armv6m -x c -E -dM %s -o - | FileCheck -match-full-lines --check-prefix=ARM-DARWIN-EABI %s
@@ -8358,6 +8366,7 @@
 // PS4:#define __SSE2__ 1
 // PS4:#define __SSE_MATH__ 1
 // PS4:#define __SSE__ 1
+// PS4:#define __STDC_VERSION__ 199901L
 // PS4:#define __UINTMAX_TYPE__ long unsigned int
 // PS4:#define __USER_LABEL_PREFIX__
 // PS4:#define __WCHAR_MAX__ 65535

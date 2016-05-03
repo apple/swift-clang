@@ -85,7 +85,9 @@ class BlockByrefHelpers;
 class BlockByrefInfo;
 class BlockFlags;
 class BlockFieldFlags;
+class RegionCodeGenTy;
 class TargetCodeGenInfo;
+struct OMPTaskDataTy;
 
 /// The kind of evaluation to perform on values of a particular
 /// type.  Basically, is the code in CGExprScalar, CGExprComplex, or
@@ -638,6 +640,11 @@ public:
     ~OMPPrivateScope() {
       if (PerformCleanup)
         ForceCleanup();
+    }
+
+    /// Checks if the global variable is captured in current function. 
+    bool isGlobalVarCaptured(const VarDecl *VD) const {
+      return !VD->isLocalVarDeclOrParm() && CGF.LocalDeclMap.count(VD) > 0;
     }
 
   private:
@@ -1872,7 +1879,7 @@ public:
                                       const CXXConstructExpr *E);
 
   void EmitCXXAggrConstructorCall(const CXXConstructorDecl *D,
-                                  const ConstantArrayType *ArrayTy,
+                                  const ArrayType *ArrayTy,
                                   Address ArrayPtr,
                                   const CXXConstructExpr *E,
                                   bool ZeroInitialization = false);
@@ -2309,7 +2316,17 @@ public:
   /// it is the last iteration of the loop code in associated directive, or to
   /// 'i1 false' otherwise. If this item is nullptr, no final check is required.
   void EmitOMPLastprivateClauseFinal(const OMPExecutableDirective &D,
+                                     bool NoFinals,
                                      llvm::Value *IsLastIterCond = nullptr);
+  /// Emit initial code for linear clauses.
+  void EmitOMPLinearClause(const OMPLoopDirective &D,
+                           CodeGenFunction::OMPPrivateScope &PrivateScope);
+  /// Emit final code for linear clauses.
+  /// \param CondGen Optional conditional code for final part of codegen for
+  /// linear clause.
+  void EmitOMPLinearClauseFinal(
+      const OMPLoopDirective &D,
+      const llvm::function_ref<llvm::Value *(CodeGenFunction &)> &CondGen);
   /// \brief Emit initial code for reduction variables. Creates reduction copies
   /// and initializes them with the values according to OpenMP standard.
   ///
@@ -2329,6 +2346,14 @@ public:
   ///
   /// \param D Directive (possibly) with the 'linear' clause.
   void EmitOMPLinearClauseInit(const OMPLoopDirective &D);
+
+  typedef const llvm::function_ref<void(CodeGenFunction & /*CGF*/,
+                                        llvm::Value * /*OutlinedFn*/,
+                                        const OMPTaskDataTy & /*Data*/)>
+      TaskGenTy;
+  void EmitOMPTaskBasedDirective(const OMPExecutableDirective &S,
+                                 const RegionCodeGenTy &BodyGen,
+                                 const TaskGenTy &TaskGen, OMPTaskDataTy &Data);
 
   void EmitOMPParallelDirective(const OMPParallelDirective &S);
   void EmitOMPSimdDirective(const OMPSimdDirective &S);
@@ -2361,6 +2386,7 @@ public:
   void
   EmitOMPCancellationPointDirective(const OMPCancellationPointDirective &S);
   void EmitOMPCancelDirective(const OMPCancelDirective &S);
+  void EmitOMPTaskLoopBasedDirective(const OMPLoopDirective &S);
   void EmitOMPTaskLoopDirective(const OMPTaskLoopDirective &S);
   void EmitOMPTaskLoopSimdDirective(const OMPTaskLoopSimdDirective &S);
   void EmitOMPDistributeDirective(const OMPDistributeDirective &S);
@@ -2390,9 +2416,11 @@ public:
       const llvm::function_ref<void(CodeGenFunction &)> &PostIncGen);
 
   JumpDest getOMPCancelDestination(OpenMPDirectiveKind Kind);
+  /// Emit initial code for loop counters of loop-based directives.
+  void EmitOMPPrivateLoopCounters(const OMPLoopDirective &S,
+                                  OMPPrivateScope &LoopScope);
 
 private:
-
   /// Helpers for the OpenMP loop directives.
   void EmitOMPLoopBody(const OMPLoopDirective &D, JumpDest LoopExit);
   void EmitOMPSimdInit(const OMPLoopDirective &D, bool IsMonotonic = false);

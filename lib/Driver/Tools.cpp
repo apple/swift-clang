@@ -2137,6 +2137,13 @@ void Clang::AddX86TargetArgs(const ArgList &Args,
           << A->getOption().getName() << Value;
     }
   }
+
+  // Set flags to support MCU ABI.
+  if (Args.hasArg(options::OPT_miamcu)) {
+    CmdArgs.push_back("-mfloat-abi");
+    CmdArgs.push_back("soft");
+    CmdArgs.push_back("-mstack-alignment=4");
+  }
 }
 
 void Clang::AddHexagonTargetArgs(const ArgList &Args,
@@ -3006,6 +3013,8 @@ collectSanitizerRuntimes(const ToolChain &TC, const ArgList &Args,
     NonWholeStaticRuntimes.push_back("stats");
     RequiredSymbols.push_back("__sanitizer_stats_register");
   }
+  if (SanArgs.needsEsanRt())
+    StaticRuntimes.push_back("esan");
 }
 
 // Should be called before we add system libraries (C++ ABI, libstdc++/libc++,
@@ -4420,32 +4429,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-ffunction-sections");
   }
 
-  if (Args.hasFlag(options::OPT_fwhole_program_vtables,
-                   options::OPT_fno_whole_program_vtables, false)) {
-    if (!D.isUsingLTO())
-      D.Diag(diag::err_drv_argument_only_allowed_with)
-          << "-fwhole-program-vtables"
-          << "-flto";
-    CmdArgs.push_back("-fwhole-program-vtables");
-
-    clang::SmallString<64> Path(D.ResourceDir);
-    llvm::sys::path::append(Path, "vtables_blacklist.txt");
-    if (llvm::sys::fs::exists(Path)) {
-      SmallString<64> BlacklistOpt("-fwhole-program-vtables-blacklist=");
-      BlacklistOpt += Path.str();
-      CmdArgs.push_back(Args.MakeArgString(BlacklistOpt));
-    }
-
-    for (const Arg *A :
-         Args.filtered(options::OPT_fwhole_program_vtables_blacklist_EQ)) {
-      A->claim();
-      if (!llvm::sys::fs::exists(A->getValue()))
-        D.Diag(clang::diag::err_drv_no_such_file) << A->getValue();
-    }
-
-    Args.AddAllArgs(CmdArgs, options::OPT_fwhole_program_vtables_blacklist_EQ);
-  }
-
   if (Args.hasFlag(options::OPT_fdata_sections, options::OPT_fno_data_sections,
                    UseSeparateSections)) {
     CmdArgs.push_back("-fdata-sections");
@@ -5805,6 +5788,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back(I->getFilename());
     }
 
+  bool WholeProgramVTables =
+      Args.hasFlag(options::OPT_fwhole_program_vtables,
+                   options::OPT_fno_whole_program_vtables, false);
+  if (WholeProgramVTables) {
+    if (!D.isUsingLTO())
+      D.Diag(diag::err_drv_argument_only_allowed_with)
+          << "-fwhole-program-vtables"
+          << "-flto";
+    CmdArgs.push_back("-fwhole-program-vtables");
+  }
+
   // Finally add the compile command to the compilation.
   if (Args.hasArg(options::OPT__SLASH_fallback) &&
       Output.getType() == types::TY_Object &&
@@ -6068,11 +6062,13 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
     if (Args.hasArg(options::OPT__SLASH_LDd))
       CmdArgs.push_back("-D_DEBUG");
     CmdArgs.push_back("-D_MT");
+    CmdArgs.push_back("-flto-visibility-public-std");
     FlagForCRT = "--dependent-lib=libcmt";
     break;
   case options::OPT__SLASH_MTd:
     CmdArgs.push_back("-D_DEBUG");
     CmdArgs.push_back("-D_MT");
+    CmdArgs.push_back("-flto-visibility-public-std");
     FlagForCRT = "--dependent-lib=libcmtd";
     break;
   default:
@@ -6256,36 +6252,41 @@ void ClangAs::ConstructJob(Compilation &C, const JobAction &JA,
 
   // Forward -g and handle debug info related flags, assuming we are dealing
   // with an actual assembly file.
+  bool WantDebug = false;
+  unsigned DwarfVersion = 0;
+  Args.ClaimAllArgs(options::OPT_g_Group);
+  if (Arg *A = Args.getLastArg(options::OPT_g_Group)) {
+    WantDebug = !A->getOption().matches(options::OPT_g0) &&
+                !A->getOption().matches(options::OPT_ggdb0);
+    if (WantDebug)
+      DwarfVersion = DwarfVersionNum(A->getSpelling());
+  }
+  if (DwarfVersion == 0)
+    DwarfVersion = getToolChain().GetDefaultDwarfVersion();
+
+  codegenoptions::DebugInfoKind DebugInfoKind = codegenoptions::NoDebugInfo;
+
   if (SourceAction->getType() == types::TY_Asm ||
       SourceAction->getType() == types::TY_PP_Asm) {
-    bool WantDebug = false;
-    unsigned DwarfVersion = 0;
-    Args.ClaimAllArgs(options::OPT_g_Group);
-    if (Arg *A = Args.getLastArg(options::OPT_g_Group)) {
-      WantDebug = !A->getOption().matches(options::OPT_g0) &&
-        !A->getOption().matches(options::OPT_ggdb0);
-      if (WantDebug)
-        DwarfVersion = DwarfVersionNum(A->getSpelling());
-    }
-    if (DwarfVersion == 0)
-      DwarfVersion = getToolChain().GetDefaultDwarfVersion();
-    RenderDebugEnablingArgs(Args, CmdArgs,
-                            (WantDebug ? codegenoptions::LimitedDebugInfo
-                                       : codegenoptions::NoDebugInfo),
-                            DwarfVersion, llvm::DebuggerKind::Default);
-
+    // You might think that it would be ok to set DebugInfoKind outside of
+    // the guard for source type, however there is a test which asserts
+    // that some assembler invocation receives no -debug-info-kind,
+    // and it's not clear whether that test is just overly restrictive.
+    DebugInfoKind = (WantDebug ? codegenoptions::LimitedDebugInfo
+                               : codegenoptions::NoDebugInfo);
     // Add the -fdebug-compilation-dir flag if needed.
     addDebugCompDirArg(Args, CmdArgs);
 
     // Set the AT_producer to the clang version when using the integrated
     // assembler on assembly source files.
     CmdArgs.push_back("-dwarf-debug-producer");
-    std::string QuotedClangVersion("'" + getClangFullVersion() + "'");
-    CmdArgs.push_back(Args.MakeArgString(QuotedClangVersion));
+    CmdArgs.push_back(Args.MakeArgString(getClangFullVersion()));
 
     // And pass along -I options
     Args.AddAllArgs(CmdArgs, options::OPT_I);
   }
+  RenderDebugEnablingArgs(Args, CmdArgs, DebugInfoKind, DwarfVersion,
+                          llvm::DebuggerKind::Default);
 
   // Handle -fPIC et al -- the relocation-model affects the assembler
   // for some targets.
@@ -10985,7 +10986,8 @@ void NVPTX::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
 
   ArgStringList CmdArgs;
   CmdArgs.push_back(TC.getTriple().isArch64Bit() ? "-m64" : "-m32");
-  if (Args.getLastArg(options::OPT_cuda_noopt_device_debug)) {
+  if (Args.hasFlag(options::OPT_cuda_noopt_device_debug,
+                   options::OPT_no_cuda_noopt_device_debug, false)) {
     // ptxas does not accept -g option if optimization is enabled, so
     // we ignore the compiler's -O* options if we want debug info.
     CmdArgs.push_back("-g");

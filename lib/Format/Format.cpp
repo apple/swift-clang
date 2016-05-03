@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Format/Format.h"
+#include "AffectedRangeManager.h"
 #include "ContinuationIndenter.h"
 #include "TokenAnnotator.h"
 #include "UnwrappedLineFormatter.h"
@@ -30,6 +31,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/YAMLTraits.h"
+#include <memory>
 #include <queue>
 #include <string>
 
@@ -782,8 +784,8 @@ namespace {
 
 class FormatTokenLexer {
 public:
-  FormatTokenLexer(SourceManager &SourceMgr, FileID ID, FormatStyle &Style,
-                   encoding::Encoding Encoding)
+  FormatTokenLexer(const SourceManager &SourceMgr, FileID ID,
+                   const FormatStyle &Style, encoding::Encoding Encoding)
       : FormatTok(nullptr), IsFirstToken(true), GreaterStashed(false),
         LessStashed(false), Column(0), TrailingWhitespace(0),
         SourceMgr(SourceMgr), ID(ID), Style(Style),
@@ -1350,7 +1352,8 @@ private:
             Tokens.back()->Tok.getIdentifierInfo()->getPPKeywordID() ==
                 tok::pp_define) &&
           std::find(ForEachMacros.begin(), ForEachMacros.end(),
-                    FormatTok->Tok.getIdentifierInfo()) != ForEachMacros.end()) {
+                    FormatTok->Tok.getIdentifierInfo()) !=
+              ForEachMacros.end()) {
         FormatTok->Type = TT_ForEachMacro;
       } else if (FormatTok->is(tok::identifier)) {
         if (MacroBlockBeginRegex.match(Text)) {
@@ -1370,9 +1373,9 @@ private:
   unsigned Column;
   unsigned TrailingWhitespace;
   std::unique_ptr<Lexer> Lex;
-  SourceManager &SourceMgr;
+  const SourceManager &SourceMgr;
   FileID ID;
-  FormatStyle &Style;
+  const FormatStyle &Style;
   IdentifierTable IdentTable;
   AdditionalKeywords Keywords;
   encoding::Encoding Encoding;
@@ -1446,15 +1449,89 @@ static StringRef getLanguageName(FormatStyle::LanguageKind Language) {
   }
 }
 
-class Formatter : public UnwrappedLineConsumer {
+class Environment {
 public:
-  Formatter(const FormatStyle &Style, SourceManager &SourceMgr, FileID ID,
-            ArrayRef<CharSourceRange> Ranges)
-      : Style(Style), ID(ID), SourceMgr(SourceMgr),
-        Whitespaces(SourceMgr, Style,
-                    inputUsesCRLF(SourceMgr.getBufferData(ID))),
-        Ranges(Ranges.begin(), Ranges.end()), UnwrappedLines(1),
-        Encoding(encoding::detectEncoding(SourceMgr.getBufferData(ID))) {
+  Environment(SourceManager &SM, FileID ID, ArrayRef<CharSourceRange> Ranges)
+      : ID(ID), CharRanges(Ranges.begin(), Ranges.end()), SM(SM) {}
+
+  Environment(FileID ID, std::unique_ptr<FileManager> FileMgr,
+              std::unique_ptr<SourceManager> VirtualSM,
+              std::unique_ptr<DiagnosticsEngine> Diagnostics,
+              const std::vector<CharSourceRange> &CharRanges)
+      : ID(ID), CharRanges(CharRanges.begin(), CharRanges.end()),
+        SM(*VirtualSM), FileMgr(std::move(FileMgr)),
+        VirtualSM(std::move(VirtualSM)), Diagnostics(std::move(Diagnostics)) {}
+
+  // This sets up an virtual file system with file \p FileName containing \p
+  // Code.
+  static std::unique_ptr<Environment>
+  CreateVirtualEnvironment(StringRef Code, StringRef FileName,
+                           ArrayRef<tooling::Range> Ranges) {
+    // This is referenced by `FileMgr` and will be released by `FileMgr` when it
+    // is deleted.
+    IntrusiveRefCntPtr<vfs::InMemoryFileSystem> InMemoryFileSystem(
+        new vfs::InMemoryFileSystem);
+    // This is passed to `SM` as reference, so the pointer has to be referenced
+    // in `Environment` so that `FileMgr` can out-live this function scope.
+    std::unique_ptr<FileManager> FileMgr(
+        new FileManager(FileSystemOptions(), InMemoryFileSystem));
+    // This is passed to `SM` as reference, so the pointer has to be referenced
+    // by `Environment` due to the same reason above.
+    std::unique_ptr<DiagnosticsEngine> Diagnostics(new DiagnosticsEngine(
+        IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs),
+        new DiagnosticOptions));
+    // This will be stored as reference, so the pointer has to be stored in
+    // due to the same reason above.
+    std::unique_ptr<SourceManager> VirtualSM(
+        new SourceManager(*Diagnostics, *FileMgr));
+    InMemoryFileSystem->addFile(
+        FileName, 0, llvm::MemoryBuffer::getMemBuffer(
+                         Code, FileName, /*RequiresNullTerminator=*/false));
+    FileID ID = VirtualSM->createFileID(
+        FileMgr->getFile(FileName), SourceLocation(), clang::SrcMgr::C_User);
+    assert(ID.isValid());
+    SourceLocation StartOfFile = VirtualSM->getLocForStartOfFile(ID);
+    std::vector<CharSourceRange> CharRanges;
+    for (const tooling::Range &Range : Ranges) {
+      SourceLocation Start = StartOfFile.getLocWithOffset(Range.getOffset());
+      SourceLocation End = Start.getLocWithOffset(Range.getLength());
+      CharRanges.push_back(CharSourceRange::getCharRange(Start, End));
+    }
+    return llvm::make_unique<Environment>(ID, std::move(FileMgr),
+                                          std::move(VirtualSM),
+                                          std::move(Diagnostics), CharRanges);
+  }
+
+  FileID getFileID() const { return ID; }
+
+  StringRef getFileName() const { return FileName; }
+
+  ArrayRef<CharSourceRange> getCharRanges() const { return CharRanges; }
+
+  const SourceManager &getSourceManager() const { return SM; }
+
+private:
+  FileID ID;
+  StringRef FileName;
+  SmallVector<CharSourceRange, 8> CharRanges;
+  SourceManager &SM;
+
+  // The order of these fields are important - they should be in the same order
+  // as they are created in `CreateVirtualEnvironment` so that they can be
+  // deleted in the reverse order as they are created.
+  std::unique_ptr<FileManager> FileMgr;
+  std::unique_ptr<SourceManager> VirtualSM;
+  std::unique_ptr<DiagnosticsEngine> Diagnostics;
+};
+
+class TokenAnalyzer : public UnwrappedLineConsumer {
+public:
+  TokenAnalyzer(const Environment &Env, const FormatStyle &Style)
+      : Style(Style), Env(Env),
+        AffectedRangeMgr(Env.getSourceManager(), Env.getCharRanges()),
+        UnwrappedLines(1),
+        Encoding(encoding::detectEncoding(
+            Env.getSourceManager().getBufferData(Env.getFileID()))) {
     DEBUG(llvm::dbgs() << "File encoding: "
                        << (Encoding == encoding::Encoding_UTF8 ? "UTF8"
                                                                : "unknown")
@@ -1463,9 +1540,10 @@ public:
                        << "\n");
   }
 
-  tooling::Replacements format(bool *IncompleteFormat) {
+  tooling::Replacements process() {
     tooling::Replacements Result;
-    FormatTokenLexer Tokens(SourceMgr, ID, Style, Encoding);
+    FormatTokenLexer Tokens(Env.getSourceManager(), Env.getFileID(), Style,
+                            Encoding);
 
     UnwrappedLineParser Parser(Style, Tokens.getKeywords(), Tokens.lex(),
                                *this);
@@ -1475,11 +1553,16 @@ public:
          ++Run) {
       DEBUG(llvm::dbgs() << "Run " << Run << "...\n");
       SmallVector<AnnotatedLine *, 16> AnnotatedLines;
+
+      TokenAnnotator Annotator(Style, Tokens.getKeywords());
       for (unsigned i = 0, e = UnwrappedLines[Run].size(); i != e; ++i) {
         AnnotatedLines.push_back(new AnnotatedLine(UnwrappedLines[Run][i]));
+        Annotator.annotate(*AnnotatedLines.back());
       }
+
       tooling::Replacements RunResult =
-          format(AnnotatedLines, Tokens, Result, IncompleteFormat);
+          analyze(Annotator, AnnotatedLines, Tokens, Result);
+
       DEBUG({
         llvm::dbgs() << "Replacements for run " << Run << ":\n";
         for (tooling::Replacements::iterator I = RunResult.begin(),
@@ -1492,21 +1575,48 @@ public:
         delete AnnotatedLines[i];
       }
       Result.insert(RunResult.begin(), RunResult.end());
-      Whitespaces.reset();
     }
     return Result;
   }
 
-  tooling::Replacements format(SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
-                               FormatTokenLexer &Tokens,
-                               tooling::Replacements &Result,
-                               bool *IncompleteFormat) {
-    TokenAnnotator Annotator(Style, Tokens.getKeywords());
-    for (unsigned i = 0, e = AnnotatedLines.size(); i != e; ++i) {
-      Annotator.annotate(*AnnotatedLines[i]);
-    }
+protected:
+  virtual tooling::Replacements
+  analyze(TokenAnnotator &Annotator,
+          SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
+          FormatTokenLexer &Tokens, tooling::Replacements &Result) = 0;
+
+  void consumeUnwrappedLine(const UnwrappedLine &TheLine) override {
+    assert(!UnwrappedLines.empty());
+    UnwrappedLines.back().push_back(TheLine);
+  }
+
+  void finishRun() override {
+    UnwrappedLines.push_back(SmallVector<UnwrappedLine, 16>());
+  }
+
+  FormatStyle Style;
+  // Stores Style, FileID and SourceManager etc.
+  const Environment &Env;
+  // AffectedRangeMgr stores ranges to be fixed.
+  AffectedRangeManager AffectedRangeMgr;
+  SmallVector<SmallVector<UnwrappedLine, 16>, 2> UnwrappedLines;
+  encoding::Encoding Encoding;
+};
+
+class Formatter : public TokenAnalyzer {
+public:
+  Formatter(const Environment &Env, const FormatStyle &Style,
+            bool *IncompleteFormat)
+      : TokenAnalyzer(Env, Style), IncompleteFormat(IncompleteFormat) {}
+
+  tooling::Replacements
+  analyze(TokenAnnotator &Annotator,
+          SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
+          FormatTokenLexer &Tokens, tooling::Replacements &Result) override {
     deriveLocalStyle(AnnotatedLines);
-    computeAffectedLines(AnnotatedLines.begin(), AnnotatedLines.end());
+    AffectedRangeMgr.computeAffectedLines(AnnotatedLines.begin(),
+                                          AnnotatedLines.end());
+
     if (Style.Language == FormatStyle::LK_JavaScript &&
         Style.JavaScriptQuotes != FormatStyle::JSQS_Leave)
       requoteJSStringLiteral(AnnotatedLines, Result);
@@ -1516,8 +1626,12 @@ public:
     }
 
     Annotator.setCommentLineLevels(AnnotatedLines);
-    ContinuationIndenter Indenter(Style, Tokens.getKeywords(), SourceMgr,
-                                  Whitespaces, Encoding,
+
+    WhitespaceManager Whitespaces(
+        Env.getSourceManager(), Style,
+        inputUsesCRLF(Env.getSourceManager().getBufferData(Env.getFileID())));
+    ContinuationIndenter Indenter(Style, Tokens.getKeywords(),
+                                  Env.getSourceManager(), Whitespaces, Encoding,
                                   BinPackInconclusiveFunctions);
     UnwrappedLineFormatter(&Indenter, &Whitespaces, Style, Tokens.getKeywords(),
                            IncompleteFormat)
@@ -1526,50 +1640,11 @@ public:
   }
 
 private:
-  // Determines which lines are affected by the SourceRanges given as input.
-  // Returns \c true if at least one line between I and E or one of their
-  // children is affected.
-  bool computeAffectedLines(SmallVectorImpl<AnnotatedLine *>::iterator I,
-                            SmallVectorImpl<AnnotatedLine *>::iterator E) {
-    bool SomeLineAffected = false;
-    const AnnotatedLine *PreviousLine = nullptr;
-    while (I != E) {
-      AnnotatedLine *Line = *I;
-      Line->LeadingEmptyLinesAffected = affectsLeadingEmptyLines(*Line->First);
-
-      // If a line is part of a preprocessor directive, it needs to be formatted
-      // if any token within the directive is affected.
-      if (Line->InPPDirective) {
-        FormatToken *Last = Line->Last;
-        SmallVectorImpl<AnnotatedLine *>::iterator PPEnd = I + 1;
-        while (PPEnd != E && !(*PPEnd)->First->HasUnescapedNewline) {
-          Last = (*PPEnd)->Last;
-          ++PPEnd;
-        }
-
-        if (affectsTokenRange(*Line->First, *Last,
-                              /*IncludeLeadingNewlines=*/false)) {
-          SomeLineAffected = true;
-          markAllAsAffected(I, PPEnd);
-        }
-        I = PPEnd;
-        continue;
-      }
-
-      if (nonPPLineAffected(Line, PreviousLine))
-        SomeLineAffected = true;
-
-      PreviousLine = Line;
-      ++I;
-    }
-    return SomeLineAffected;
-  }
- 
   // If the last token is a double/single-quoted string literal, generates a
   // replacement with a single/double quoted string literal, re-escaping the
   // contents in the process.
   void requoteJSStringLiteral(SmallVectorImpl<AnnotatedLine *> &Lines,
-                                 tooling::Replacements &Result) {
+                              tooling::Replacements &Result) {
     for (AnnotatedLine *Line : Lines) {
       requoteJSStringLiteral(Line->Children, Result);
       if (!Line->Affected)
@@ -1592,8 +1667,8 @@ private:
         SourceLocation Start = FormatTok->Tok.getLocation();
         auto Replace = [&](SourceLocation Start, unsigned Length,
                            StringRef ReplacementText) {
-          Result.insert(
-              tooling::Replacement(SourceMgr, Start, Length, ReplacementText));
+          Result.insert(tooling::Replacement(Env.getSourceManager(), Start,
+                                             Length, ReplacementText));
         };
         Replace(Start, 1, IsSingle ? "'" : "\"");
         Replace(FormatTok->Tok.getEndLoc().getLocWithOffset(-1), 1,
@@ -1604,136 +1679,41 @@ private:
         bool Escaped = false;
         for (size_t i = 1; i < Input.size() - 1; i++) {
           switch (Input[i]) {
-            case '\\':
-              if (!Escaped && i + 1 < Input.size() &&
-                  ((IsSingle && Input[i + 1] == '"') ||
-                   (!IsSingle && Input[i + 1] == '\''))) {
-                // Remove this \, it's escaping a " or ' that no longer needs
-                // escaping
-                ColumnWidth--;
-                Replace(Start.getLocWithOffset(i), 1, "");
-                continue;
-              }
-              Escaped = !Escaped;
-              break;
-            case '\"':
-            case '\'':
-              if (!Escaped && IsSingle == (Input[i] == '\'')) {
-                // Escape the quote.
-                Replace(Start.getLocWithOffset(i), 0, "\\");
-                ColumnWidth++;
-              }
-              Escaped = false;
-              break;
-            default:
-              Escaped = false;
-              break;
+          case '\\':
+            if (!Escaped && i + 1 < Input.size() &&
+                ((IsSingle && Input[i + 1] == '"') ||
+                 (!IsSingle && Input[i + 1] == '\''))) {
+              // Remove this \, it's escaping a " or ' that no longer needs
+              // escaping
+              ColumnWidth--;
+              Replace(Start.getLocWithOffset(i), 1, "");
+              continue;
+            }
+            Escaped = !Escaped;
+            break;
+          case '\"':
+          case '\'':
+            if (!Escaped && IsSingle == (Input[i] == '\'')) {
+              // Escape the quote.
+              Replace(Start.getLocWithOffset(i), 0, "\\");
+              ColumnWidth++;
+            }
+            Escaped = false;
+            break;
+          default:
+            Escaped = false;
+            break;
           }
         }
 
         // For formatting, count the number of non-escaped single quotes in them
         // and adjust ColumnWidth to take the added escapes into account.
-        // FIXME(martinprobst): this might conflict with code breaking a long string
-        // literal (which clang-format doesn't do, yet). For that to work, this code
-        // would have to modify TokenText directly.
+        // FIXME(martinprobst): this might conflict with code breaking a long
+        // string literal (which clang-format doesn't do, yet). For that to
+        // work, this code would have to modify TokenText directly.
         FormatTok->ColumnWidth = ColumnWidth;
       }
     }
-  }
-
-
-  // Determines whether 'Line' is affected by the SourceRanges given as input.
-  // Returns \c true if line or one if its children is affected.
-  bool nonPPLineAffected(AnnotatedLine *Line,
-                         const AnnotatedLine *PreviousLine) {
-    bool SomeLineAffected = false;
-    Line->ChildrenAffected =
-        computeAffectedLines(Line->Children.begin(), Line->Children.end());
-    if (Line->ChildrenAffected)
-      SomeLineAffected = true;
-
-    // Stores whether one of the line's tokens is directly affected.
-    bool SomeTokenAffected = false;
-    // Stores whether we need to look at the leading newlines of the next token
-    // in order to determine whether it was affected.
-    bool IncludeLeadingNewlines = false;
-
-    // Stores whether the first child line of any of this line's tokens is
-    // affected.
-    bool SomeFirstChildAffected = false;
-
-    for (FormatToken *Tok = Line->First; Tok; Tok = Tok->Next) {
-      // Determine whether 'Tok' was affected.
-      if (affectsTokenRange(*Tok, *Tok, IncludeLeadingNewlines))
-        SomeTokenAffected = true;
-
-      // Determine whether the first child of 'Tok' was affected.
-      if (!Tok->Children.empty() && Tok->Children.front()->Affected)
-        SomeFirstChildAffected = true;
-
-      IncludeLeadingNewlines = Tok->Children.empty();
-    }
-
-    // Was this line moved, i.e. has it previously been on the same line as an
-    // affected line?
-    bool LineMoved = PreviousLine && PreviousLine->Affected &&
-                     Line->First->NewlinesBefore == 0;
-
-    bool IsContinuedComment =
-        Line->First->is(tok::comment) && Line->First->Next == nullptr &&
-        Line->First->NewlinesBefore < 2 && PreviousLine &&
-        PreviousLine->Affected && PreviousLine->Last->is(tok::comment);
-
-    if (SomeTokenAffected || SomeFirstChildAffected || LineMoved ||
-        IsContinuedComment) {
-      Line->Affected = true;
-      SomeLineAffected = true;
-    }
-    return SomeLineAffected;
-  }
-
-  // Marks all lines between I and E as well as all their children as affected.
-  void markAllAsAffected(SmallVectorImpl<AnnotatedLine *>::iterator I,
-                         SmallVectorImpl<AnnotatedLine *>::iterator E) {
-    while (I != E) {
-      (*I)->Affected = true;
-      markAllAsAffected((*I)->Children.begin(), (*I)->Children.end());
-      ++I;
-    }
-  }
-
-  // Returns true if the range from 'First' to 'Last' intersects with one of the
-  // input ranges.
-  bool affectsTokenRange(const FormatToken &First, const FormatToken &Last,
-                         bool IncludeLeadingNewlines) {
-    SourceLocation Start = First.WhitespaceRange.getBegin();
-    if (!IncludeLeadingNewlines)
-      Start = Start.getLocWithOffset(First.LastNewlineOffset);
-    SourceLocation End = Last.getStartOfNonWhitespace();
-    End = End.getLocWithOffset(Last.TokenText.size());
-    CharSourceRange Range = CharSourceRange::getCharRange(Start, End);
-    return affectsCharSourceRange(Range);
-  }
-
-  // Returns true if one of the input ranges intersect the leading empty lines
-  // before 'Tok'.
-  bool affectsLeadingEmptyLines(const FormatToken &Tok) {
-    CharSourceRange EmptyLineRange = CharSourceRange::getCharRange(
-        Tok.WhitespaceRange.getBegin(),
-        Tok.WhitespaceRange.getBegin().getLocWithOffset(Tok.LastNewlineOffset));
-    return affectsCharSourceRange(EmptyLineRange);
-  }
-
-  // Returns true if 'Range' intersects with one of the input ranges.
-  bool affectsCharSourceRange(const CharSourceRange &Range) {
-    for (SmallVectorImpl<CharSourceRange>::const_iterator I = Ranges.begin(),
-                                                          E = Ranges.end();
-         I != E; ++I) {
-      if (!SourceMgr.isBeforeInTranslationUnit(Range.getEnd(), I->getBegin()) &&
-          !SourceMgr.isBeforeInTranslationUnit(I->getEnd(), Range.getBegin()))
-        return true;
-    }
-    return false;
   }
 
   static bool inputUsesCRLF(StringRef Text) {
@@ -1742,7 +1722,7 @@ private:
 
   bool
   hasCpp03IncompatibleFormat(const SmallVectorImpl<AnnotatedLine *> &Lines) {
-    for (const AnnotatedLine* Line : Lines) {
+    for (const AnnotatedLine *Line : Lines) {
       if (hasCpp03IncompatibleFormat(Line->Children))
         return true;
       for (FormatToken *Tok = Line->First->Next; Tok; Tok = Tok->Next) {
@@ -1760,7 +1740,7 @@ private:
 
   int countVariableAlignments(const SmallVectorImpl<AnnotatedLine *> &Lines) {
     int AlignmentDiff = 0;
-    for (const AnnotatedLine* Line : Lines) {
+    for (const AnnotatedLine *Line : Lines) {
       AlignmentDiff += countVariableAlignments(Line->Children);
       for (FormatToken *Tok = Line->First; Tok && Tok->Next; Tok = Tok->Next) {
         if (!Tok->is(TT_PointerOrReference))
@@ -1807,24 +1787,171 @@ private:
         HasBinPackedFunction || !HasOnePerLineFunction;
   }
 
-  void consumeUnwrappedLine(const UnwrappedLine &TheLine) override {
-    assert(!UnwrappedLines.empty());
-    UnwrappedLines.back().push_back(TheLine);
-  }
-
-  void finishRun() override {
-    UnwrappedLines.push_back(SmallVector<UnwrappedLine, 16>());
-  }
-
-  FormatStyle Style;
-  FileID ID;
-  SourceManager &SourceMgr;
-  WhitespaceManager Whitespaces;
-  SmallVector<CharSourceRange, 8> Ranges;
-  SmallVector<SmallVector<UnwrappedLine, 16>, 2> UnwrappedLines;
-
-  encoding::Encoding Encoding;
   bool BinPackInconclusiveFunctions;
+  bool *IncompleteFormat;
+};
+
+// This class clean up the erroneous/redundant code around the given ranges in
+// file.
+class Cleaner : public TokenAnalyzer {
+public:
+  Cleaner(const Environment &Env, const FormatStyle &Style)
+      : TokenAnalyzer(Env, Style),
+        DeletedTokens(FormatTokenLess(Env.getSourceManager())) {}
+
+  // FIXME: eliminate unused parameters.
+  tooling::Replacements
+  analyze(TokenAnnotator &Annotator,
+          SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
+          FormatTokenLexer &Tokens, tooling::Replacements &Result) override {
+    // FIXME: in the current implementation the granularity of affected range
+    // is an annotated line. However, this is not sufficient. Furthermore,
+    // redundant code introduced by replacements does not necessarily
+    // intercept with ranges of replacements that result in the redundancy.
+    // To determine if some redundant code is actually introduced by
+    // replacements(e.g. deletions), we need to come up with a more
+    // sophisticated way of computing affected ranges.
+    AffectedRangeMgr.computeAffectedLines(AnnotatedLines.begin(),
+                                          AnnotatedLines.end());
+
+    checkEmptyNamespace(AnnotatedLines);
+
+    return generateFixes();
+  }
+
+private:
+  bool containsOnlyComments(const AnnotatedLine &Line) {
+    for (FormatToken *Tok = Line.First; Tok != nullptr; Tok = Tok->Next) {
+      if (Tok->isNot(tok::comment))
+        return false;
+    }
+    return true;
+  }
+
+  // Iterate through all lines and remove any empty (nested) namespaces.
+  void checkEmptyNamespace(SmallVectorImpl<AnnotatedLine *> &AnnotatedLines) {
+    for (unsigned i = 0, e = AnnotatedLines.size(); i != e; ++i) {
+      auto &Line = *AnnotatedLines[i];
+      if (Line.startsWith(tok::kw_namespace) ||
+          Line.startsWith(tok::kw_inline, tok::kw_namespace)) {
+        checkEmptyNamespace(AnnotatedLines, i, i);
+      }
+    }
+
+    for (auto Line : DeletedLines) {
+      FormatToken *Tok = AnnotatedLines[Line]->First;
+      while (Tok) {
+        deleteToken(Tok);
+        Tok = Tok->Next;
+      }
+    }
+  }
+
+  // The function checks if the namespace, which starts from \p CurrentLine, and
+  // its nested namespaces are empty and delete them if they are empty. It also
+  // sets \p NewLine to the last line checked.
+  // Returns true if the current namespace is empty.
+  bool checkEmptyNamespace(SmallVectorImpl<AnnotatedLine *> &AnnotatedLines,
+                           unsigned CurrentLine, unsigned &NewLine) {
+    unsigned InitLine = CurrentLine, End = AnnotatedLines.size();
+    if (Style.BraceWrapping.AfterNamespace) {
+      // If the left brace is in a new line, we should consume it first so that
+      // it does not make the namespace non-empty.
+      // FIXME: error handling if there is no left brace.
+      if (!AnnotatedLines[++CurrentLine]->startsWith(tok::l_brace)) {
+        NewLine = CurrentLine;
+        return false;
+      }
+    } else if (!AnnotatedLines[CurrentLine]->endsWith(tok::l_brace)) {
+      return false;
+    }
+    while (++CurrentLine < End) {
+      if (AnnotatedLines[CurrentLine]->startsWith(tok::r_brace))
+        break;
+
+      if (AnnotatedLines[CurrentLine]->startsWith(tok::kw_namespace) ||
+          AnnotatedLines[CurrentLine]->startsWith(tok::kw_inline,
+                                                  tok::kw_namespace)) {
+        if (!checkEmptyNamespace(AnnotatedLines, CurrentLine, NewLine))
+          return false;
+        CurrentLine = NewLine;
+        continue;
+      }
+
+      if (containsOnlyComments(*AnnotatedLines[CurrentLine]))
+        continue;
+
+      // If there is anything other than comments or nested namespaces in the
+      // current namespace, the namespace cannot be empty.
+      NewLine = CurrentLine;
+      return false;
+    }
+
+    NewLine = CurrentLine;
+    if (CurrentLine >= End)
+      return false;
+
+    // Check if the empty namespace is actually affected by changed ranges.
+    if (!AffectedRangeMgr.affectsCharSourceRange(CharSourceRange::getCharRange(
+            AnnotatedLines[InitLine]->First->Tok.getLocation(),
+            AnnotatedLines[CurrentLine]->Last->Tok.getEndLoc())))
+      return false;
+
+    for (unsigned i = InitLine; i <= CurrentLine; ++i) {
+      DeletedLines.insert(i);
+    }
+
+    return true;
+  }
+
+  // Delete the given token.
+  inline void deleteToken(FormatToken *Tok) {
+    if (Tok)
+      DeletedTokens.insert(Tok);
+  }
+
+  tooling::Replacements generateFixes() {
+    tooling::Replacements Fixes;
+    std::vector<FormatToken *> Tokens;
+    std::copy(DeletedTokens.begin(), DeletedTokens.end(),
+              std::back_inserter(Tokens));
+
+    // Merge multiple continuous token deletions into one big deletion so that
+    // the number of replacements can be reduced. This makes computing affected
+    // ranges more efficient when we run reformat on the changed code.
+    unsigned Idx = 0;
+    while (Idx < Tokens.size()) {
+      unsigned St = Idx, End = Idx;
+      while ((End + 1) < Tokens.size() &&
+             Tokens[End]->Next == Tokens[End + 1]) {
+        End++;
+      }
+      auto SR = CharSourceRange::getCharRange(Tokens[St]->Tok.getLocation(),
+                                              Tokens[End]->Tok.getEndLoc());
+      Fixes.insert(tooling::Replacement(Env.getSourceManager(), SR, ""));
+      Idx = End + 1;
+    }
+
+    return Fixes;
+  }
+
+  // Class for less-than inequality comparason for the set `RedundantTokens`.
+  // We store tokens in the order they appear in the translation unit so that
+  // we do not need to sort them in `generateFixes()`.
+  struct FormatTokenLess {
+    FormatTokenLess(const SourceManager &SM) : SM(SM) {}
+
+    bool operator()(const FormatToken *LHS, const FormatToken *RHS) {
+      return SM.isBeforeInTranslationUnit(LHS->Tok.getLocation(),
+                                          RHS->Tok.getLocation());
+    }
+    const SourceManager &SM;
+  };
+
+  // Tokens to be deleted.
+  std::set<FormatToken *, FormatTokenLess> DeletedTokens;
+  // The line numbers of lines to be deleted.
+  std::set<unsigned> DeletedLines;
 };
 
 struct IncludeDirective {
@@ -1993,9 +2120,11 @@ tooling::Replacements sortIncludes(const FormatStyle &Style, StringRef Code,
   return Replaces;
 }
 
-tooling::Replacements formatReplacements(StringRef Code,
-                                         const tooling::Replacements &Replaces,
-                                         const FormatStyle &Style) {
+template <typename T>
+static tooling::Replacements
+processReplacements(T ProcessFunc, StringRef Code,
+                    const tooling::Replacements &Replaces,
+                    const FormatStyle &Style) {
   if (Replaces.empty())
     return tooling::Replacements();
 
@@ -2003,52 +2132,78 @@ tooling::Replacements formatReplacements(StringRef Code,
   std::vector<tooling::Range> ChangedRanges =
       tooling::calculateChangedRanges(Replaces);
   StringRef FileName = Replaces.begin()->getFilePath();
+
   tooling::Replacements FormatReplaces =
-      reformat(Style, NewCode, ChangedRanges, FileName);
+      ProcessFunc(Style, NewCode, ChangedRanges, FileName);
 
-  tooling::Replacements MergedReplacements =
-      mergeReplacements(Replaces, FormatReplaces);
-
-  return MergedReplacements;
+  return mergeReplacements(Replaces, FormatReplaces);
 }
 
-tooling::Replacements reformat(const FormatStyle &Style,
-                               SourceManager &SourceMgr, FileID ID,
-                               ArrayRef<CharSourceRange> Ranges,
+tooling::Replacements formatReplacements(StringRef Code,
+                                         const tooling::Replacements &Replaces,
+                                         const FormatStyle &Style) {
+  // We need to use lambda function here since there are two versions of
+  // `reformat`.
+  auto Reformat = [](const FormatStyle &Style, StringRef Code,
+                     std::vector<tooling::Range> Ranges,
+                     StringRef FileName) -> tooling::Replacements {
+    return reformat(Style, Code, Ranges, FileName);
+  };
+  return processReplacements(Reformat, Code, Replaces, Style);
+}
+
+tooling::Replacements
+cleanupAroundReplacements(StringRef Code, const tooling::Replacements &Replaces,
+                          const FormatStyle &Style) {
+  // We need to use lambda function here since there are two versions of
+  // `cleanup`.
+  auto Cleanup = [](const FormatStyle &Style, StringRef Code,
+                    std::vector<tooling::Range> Ranges,
+                    StringRef FileName) -> tooling::Replacements {
+    return cleanup(Style, Code, Ranges, FileName);
+  };
+  return processReplacements(Cleanup, Code, Replaces, Style);
+}
+
+tooling::Replacements reformat(const FormatStyle &Style, SourceManager &SM,
+                               FileID ID, ArrayRef<CharSourceRange> Ranges,
                                bool *IncompleteFormat) {
   FormatStyle Expanded = expandPresets(Style);
   if (Expanded.DisableFormat)
     return tooling::Replacements();
-  Formatter formatter(Expanded, SourceMgr, ID, Ranges);
-  return formatter.format(IncompleteFormat);
+
+  Environment Env(SM, ID, Ranges);
+  Formatter Format(Env, Expanded, IncompleteFormat);
+  return Format.process();
 }
 
 tooling::Replacements reformat(const FormatStyle &Style, StringRef Code,
                                ArrayRef<tooling::Range> Ranges,
                                StringRef FileName, bool *IncompleteFormat) {
-  if (Style.DisableFormat)
+  FormatStyle Expanded = expandPresets(Style);
+  if (Expanded.DisableFormat)
     return tooling::Replacements();
 
-  IntrusiveRefCntPtr<vfs::InMemoryFileSystem> InMemoryFileSystem(
-      new vfs::InMemoryFileSystem);
-  FileManager Files(FileSystemOptions(), InMemoryFileSystem);
-  DiagnosticsEngine Diagnostics(
-      IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs),
-      new DiagnosticOptions);
-  SourceManager SourceMgr(Diagnostics, Files);
-  InMemoryFileSystem->addFile(
-      FileName, 0, llvm::MemoryBuffer::getMemBuffer(
-                       Code, FileName, /*RequiresNullTerminator=*/false));
-  FileID ID = SourceMgr.createFileID(Files.getFile(FileName), SourceLocation(),
-                                     clang::SrcMgr::C_User);
-  SourceLocation StartOfFile = SourceMgr.getLocForStartOfFile(ID);
-  std::vector<CharSourceRange> CharRanges;
-  for (const tooling::Range &Range : Ranges) {
-    SourceLocation Start = StartOfFile.getLocWithOffset(Range.getOffset());
-    SourceLocation End = Start.getLocWithOffset(Range.getLength());
-    CharRanges.push_back(CharSourceRange::getCharRange(Start, End));
-  }
-  return reformat(Style, SourceMgr, ID, CharRanges, IncompleteFormat);
+  std::unique_ptr<Environment> Env =
+      Environment::CreateVirtualEnvironment(Code, FileName, Ranges);
+  Formatter Format(*Env, Expanded, IncompleteFormat);
+  return Format.process();
+}
+
+tooling::Replacements cleanup(const FormatStyle &Style, SourceManager &SM,
+                              FileID ID, ArrayRef<CharSourceRange> Ranges) {
+  Environment Env(SM, ID, Ranges);
+  Cleaner Clean(Env, Style);
+  return Clean.process();
+}
+
+tooling::Replacements cleanup(const FormatStyle &Style, StringRef Code,
+                              ArrayRef<tooling::Range> Ranges,
+                              StringRef FileName) {
+  std::unique_ptr<Environment> Env =
+      Environment::CreateVirtualEnvironment(Code, FileName, Ranges);
+  Cleaner Clean(*Env, Style);
+  return Clean.process();
 }
 
 LangOptions getFormattingLangOpts(const FormatStyle &Style) {
@@ -2062,7 +2217,7 @@ LangOptions getFormattingLangOpts(const FormatStyle &Style) {
   LangOpts.Bool = 1;
   LangOpts.ObjC1 = 1;
   LangOpts.ObjC2 = 1;
-  LangOpts.MicrosoftExt = 1; // To get kw___try, kw___finally.
+  LangOpts.MicrosoftExt = 1;    // To get kw___try, kw___finally.
   LangOpts.DeclSpecKeyword = 1; // To get __declspec.
   return LangOpts;
 }

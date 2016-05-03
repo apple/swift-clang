@@ -152,6 +152,9 @@ class InternalDriverOpt : Group<internal_driver_Group>,
 def driver_mode : Joined<["--"], "driver-mode=">, Group<internal_driver_Group>,
   Flags<[CoreOption, DriverOption, HelpHidden]>,
   HelpText<"Set the driver mode to either 'gcc', 'g++', 'cpp', or 'cl'">;
+def rsp_quoting : Joined<["--"], "rsp-quoting=">, Group<internal_driver_Group>,
+  Flags<[CoreOption, DriverOption, HelpHidden]>,
+  HelpText<"Set the rsp quoting to either 'posix', or 'windows'">;
 def ccc_gcc_name : Separate<["-"], "ccc-gcc-name">, InternalDriverOpt,
   HelpText<"Name for native GCC compiler">,
   MetaVarName<"<gcc-path>">;
@@ -337,7 +340,7 @@ def Xassembler : Separate<["-"], "Xassembler">,
   HelpText<"Pass <arg> to the assembler">, MetaVarName<"<arg>">;
 def Xclang : Separate<["-"], "Xclang">,
   HelpText<"Pass <arg> to the clang compiler">, MetaVarName<"<arg>">,
-  Flags<[DriverOption, CoreOption]>;
+  Flags<[DriverOption, CoreOption]>, Group<CompileOnly_Group>;
 def Xcuda_fatbinary : Separate<["-"], "Xcuda-fatbinary">,
   HelpText<"Pass <arg> to fatbinary invocation">, MetaVarName<"<arg>">;
 def Xcuda_ptxas : Separate<["-"], "Xcuda-ptxas">,
@@ -375,13 +378,18 @@ def cxx_isystem : JoinedOrSeparate<["-"], "cxx-isystem">, Group<clang_i_Group>,
 def c : Flag<["-"], "c">, Flags<[DriverOption]>,
   HelpText<"Only run preprocess, compile, and assemble steps">;
 def cuda_device_only : Flag<["--"], "cuda-device-only">,
-  HelpText<"Do device-side CUDA compilation only">;
+  HelpText<"Compile CUDA code for device only">;
+def cuda_host_only : Flag<["--"], "cuda-host-only">,
+  HelpText<"Compile CUDA code for host only.  Has no effect on non-CUDA "
+           "compilations.">;
+def cuda_compile_host_device : Flag<["--"], "cuda-compile-host-device">,
+  HelpText<"Compile CUDA code for both host and device (default).  Has no "
+           "effect on non-CUDA compilations.">;
 def cuda_gpu_arch_EQ : Joined<["--"], "cuda-gpu-arch=">, Flags<[DriverOption]>,
   HelpText<"CUDA GPU architecture (e.g. sm_35).  May be specified more than once.">;
-def cuda_host_only : Flag<["--"], "cuda-host-only">,
-  HelpText<"Do host-side CUDA compilation only">;
 def cuda_noopt_device_debug : Flag<["--"], "cuda-noopt-device-debug">,
   HelpText<"Enable device-side debug info generation. Disables ptxas optimizations.">;
+def no_cuda_noopt_device_debug : Flag<["--"], "no-cuda-noopt-device-debug">;
 def cuda_path_EQ : Joined<["--"], "cuda-path=">, Group<i_Group>,
   HelpText<"CUDA installation path">;
 def fcuda_flush_denormals_to_zero : Flag<["-"], "fcuda-flush-denormals-to-zero">,
@@ -1152,9 +1160,6 @@ def fwhole_program_vtables : Flag<["-"], "fwhole-program-vtables">, Group<f_Grou
   Flags<[CC1Option]>,
   HelpText<"Enables whole-program vtable optimization. Requires -flto">;
 def fno_whole_program_vtables : Flag<["-"], "fno-whole-program-vtables">, Group<f_Group>;
-def fwhole_program_vtables_blacklist_EQ : Joined<["-"], "fwhole-program-vtables-blacklist=">,
-  Group<f_Group>, Flags<[CC1Option]>,
-  HelpText<"Path to a blacklist file for whole-program vtable optimization">;
 def fwrapv : Flag<["-"], "fwrapv">, Group<f_Group>, Flags<[CC1Option]>,
   HelpText<"Treat signed integer overflow as two's complement">;
 def fwritable_strings : Flag<["-"], "fwritable-strings">, Group<f_Group>, Flags<[CC1Option]>,
@@ -1297,6 +1302,8 @@ def m3dnow : Flag<["-"], "m3dnow">, Group<m_x86_Features_Group>;
 def m64 : Flag<["-"], "m64">, Group<m_Group>, Flags<[DriverOption, CoreOption]>;
 def mx32 : Flag<["-"], "mx32">, Group<m_Group>, Flags<[DriverOption, CoreOption]>;
 def mabi_EQ : Joined<["-"], "mabi=">, Group<m_Group>;
+def miamcu : Flag<["-"], "miamcu">, Group<m_Group>, Flags<[DriverOption, CoreOption]>,
+  HelpText<"Use Intel MCU ABI">;
 def malign_functions_EQ : Joined<["-"], "malign-functions=">, Group<clang_ignored_m_Group>;
 def malign_loops_EQ : Joined<["-"], "malign-loops=">, Group<clang_ignored_m_Group>;
 def malign_jumps_EQ : Joined<["-"], "malign-jumps=">, Group<clang_ignored_m_Group>;

@@ -248,6 +248,17 @@ static void addDataFlowSanitizerPass(const PassManagerBuilder &Builder,
   PM.add(createDataFlowSanitizerPass(LangOpts.SanitizerBlacklistFiles));
 }
 
+static void addEfficiencySanitizerPass(const PassManagerBuilder &Builder,
+                                       legacy::PassManagerBase &PM) {
+  const PassManagerBuilderWrapper &BuilderWrapper =
+      static_cast<const PassManagerBuilderWrapper&>(Builder);
+  const LangOptions &LangOpts = BuilderWrapper.getLangOpts();
+  EfficiencySanitizerOptions Opts;
+  if (LangOpts.Sanitize.has(SanitizerKind::EfficiencyCacheFrag))
+    Opts.ToolType = EfficiencySanitizerOptions::ESAN_CacheFrag;
+  PM.add(createEfficiencySanitizerPass(Opts));
+}
+
 static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
                                          const CodeGenOptions &CodeGenOpts) {
   TargetLibraryInfoImpl *TLII = new TargetLibraryInfoImpl(TargetTriple);
@@ -343,6 +354,14 @@ void EmitAssemblyHelper::CreatePasses(ModuleSummaryIndex *ModuleSummary) {
     return;
   }
 
+  // Add target-specific passes that need to run as early as possible.
+  if (TM)
+    PMBuilder.addExtension(
+        PassManagerBuilder::EP_EarlyAsPossible,
+        [&](const PassManagerBuilder &, legacy::PassManagerBase &PM) {
+          TM->addEarlyAsPossiblePasses(PM);
+        });
+
   PMBuilder.addExtension(PassManagerBuilder::EP_EarlyAsPossible,
                          addAddDiscriminatorsPass);
 
@@ -407,6 +426,13 @@ void EmitAssemblyHelper::CreatePasses(ModuleSummaryIndex *ModuleSummary) {
                            addDataFlowSanitizerPass);
   }
 
+  if (LangOpts.Sanitize.hasOneOf(SanitizerKind::Efficiency)) {
+    PMBuilder.addExtension(PassManagerBuilder::EP_OptimizerLast,
+                           addEfficiencySanitizerPass);
+    PMBuilder.addExtension(PassManagerBuilder::EP_EnabledOnOptLevel0,
+                           addEfficiencySanitizerPass);
+  }
+
   // Set up the per-function pass manager.
   legacy::FunctionPassManager *FPM = getPerFunctionPasses();
   if (CodeGenOpts.VerifyModule)
@@ -439,7 +465,7 @@ void EmitAssemblyHelper::CreatePasses(ModuleSummaryIndex *ModuleSummary) {
     InstrProfOptions Options;
     Options.NoRedZone = CodeGenOpts.DisableRedZone;
     Options.InstrProfileOutput = CodeGenOpts.InstrProfileOutput;
-    MPM->add(createInstrProfilingPass(Options));
+    MPM->add(createInstrProfilingLegacyPass(Options));
   }
   if (CodeGenOpts.hasProfileIRInstr()) {
     if (!CodeGenOpts.InstrProfileOutput.empty())
@@ -569,7 +595,6 @@ TargetMachine *EmitAssemblyHelper::CreateTargetMachine(bool MustCreateTM) {
   Options.NoZerosInBSS = CodeGenOpts.NoZeroInitializedInBSS;
   Options.UnsafeFPMath = CodeGenOpts.UnsafeFPMath;
   Options.StackAlignmentOverride = CodeGenOpts.StackAlignment;
-  Options.PositionIndependentExecutable = LangOpts.PIELevel != 0;
   Options.FunctionSections = CodeGenOpts.FunctionSections;
   Options.DataSections = CodeGenOpts.DataSections;
   Options.UniqueSectionNames = CodeGenOpts.UniqueSectionNames;

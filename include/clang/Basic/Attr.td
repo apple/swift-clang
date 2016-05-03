@@ -977,7 +977,9 @@ def NoCommon : InheritableAttr {
 
 def NoDebug : InheritableAttr {
   let Spellings = [GCC<"nodebug">];
-  let Documentation = [Undocumented];
+  let Subjects = SubjectList<[FunctionLike, ObjCMethod, GlobalVar], WarnDiag,
+                              "ExpectedFunctionGlobalVarMethodOrProperty">;
+  let Documentation = [NoDebugDocs];
 }
 
 def NoDuplicate : InheritableAttr {
@@ -1385,6 +1387,15 @@ def SwiftName : InheritableAttr {
   let Documentation = [Undocumented];
 }
 
+def SwiftNewtype : Attr {
+  let Spellings = [GNU<"swift_newtype">, GNU<"swift_wrapper">];
+  let Subjects = SubjectList<[TypedefName], ErrorDiag, "ExpectedType">;
+  let Args = [EnumArgument<"NewtypeKind", "NewtypeKind",
+               ["struct", "enum"],
+               ["NK_Struct", "NK_Enum"]>];
+  let Documentation = [SwiftNewtypeDocs];
+}
+
 def SwiftPrivate : InheritableAttr {
   let Spellings = [GCC<"swift_private">];
   let Documentation = [Undocumented];
@@ -1677,6 +1688,12 @@ def WeakRef : InheritableAttr {
   let Args = [StringArgument<"Aliasee", 1>];
   let Subjects = SubjectList<[Var, Function], ErrorDiag>;
   let Documentation = [Undocumented];
+}
+
+def LTOVisibilityPublic : InheritableAttr {
+  let Spellings = [CXX11<"clang", "lto_visibility_public">];
+  let Subjects = SubjectList<[Record]>;
+  let Documentation = [LTOVisibilityDocs];
 }
 
 def AnyX86Interrupt : InheritableAttr, TargetSpecificAttr<TargetAnyX86> {

@@ -817,18 +817,21 @@ Decl *Sema::ActOnTemplateTemplateParameter(Scope* S,
   return Param;
 }
 
-/// ActOnTemplateParameterList - Builds a TemplateParameterList that
-/// contains the template parameters in Params/NumParams.
+/// ActOnTemplateParameterList - Builds a TemplateParameterList, optionally
+/// constrained by RequiresClause, that contains the template parameters in
+/// Params.
 TemplateParameterList *
 Sema::ActOnTemplateParameterList(unsigned Depth,
                                  SourceLocation ExportLoc,
                                  SourceLocation TemplateLoc,
                                  SourceLocation LAngleLoc,
                                  ArrayRef<Decl *> Params,
-                                 SourceLocation RAngleLoc) {
+                                 SourceLocation RAngleLoc,
+                                 Expr *RequiresClause) {
   if (ExportLoc.isValid())
     Diag(ExportLoc, diag::warn_template_export_unsupported);
 
+  // FIXME: store RequiresClause
   return TemplateParameterList::Create(
       Context, TemplateLoc, LAngleLoc,
       llvm::makeArrayRef((NamedDecl *const *)Params.data(), Params.size()),
@@ -6980,6 +6983,13 @@ bool Sema::CheckFunctionTemplateSpecialization(
   // Mark the prior declaration as an explicit specialization, so that later
   // clients know that this is an explicit specialization.
   if (!isFriend) {
+    // Explicit specializations do not inherit '=delete' from their primary
+    // function template.
+    if (Specialization->isDeleted()) {
+      assert(!SpecInfo->isExplicitSpecialization());
+      assert(Specialization->getCanonicalDecl() == Specialization);
+      Specialization->setDeletedAsWritten(false);
+    }
     SpecInfo->setTemplateSpecializationKind(TSK_ExplicitSpecialization);
     MarkUnusedFileScopedDecl(Specialization);
   }
@@ -7139,6 +7149,13 @@ Sema::CheckMemberSpecialization(NamedDecl *Member, LookupResult &Previous) {
       InstantiationFunction->setTemplateSpecializationKind(
                                                   TSK_ExplicitSpecialization);
       InstantiationFunction->setLocation(Member->getLocation());
+      // Explicit specializations of member functions of class templates do not
+      // inherit '=delete' from the member function they are specializing.
+      if (InstantiationFunction->isDeleted()) {
+        assert(InstantiationFunction->getCanonicalDecl() ==
+               InstantiationFunction);
+        InstantiationFunction->setDeletedAsWritten(false);
+      }
     }
 
     cast<FunctionDecl>(Member)->setInstantiationOfMemberFunction(

@@ -1791,10 +1791,10 @@ bool Sema::CheckOtherCall(CallExpr *TheCall, const FunctionProtoType *Proto) {
 }
 
 static bool isValidOrderingForOp(int64_t Ordering, AtomicExpr::AtomicOp Op) {
-  if (Ordering < AtomicExpr::AO_ABI_memory_order_relaxed ||
-      Ordering > AtomicExpr::AO_ABI_memory_order_seq_cst)
+  if (!llvm::isValidAtomicOrderingCABI(Ordering))
     return false;
 
+  auto OrderingCABI = (llvm::AtomicOrderingCABI)Ordering;
   switch (Op) {
   case AtomicExpr::AO__c11_atomic_init:
     llvm_unreachable("There is no ordering argument for an init");
@@ -1802,15 +1802,15 @@ static bool isValidOrderingForOp(int64_t Ordering, AtomicExpr::AtomicOp Op) {
   case AtomicExpr::AO__c11_atomic_load:
   case AtomicExpr::AO__atomic_load_n:
   case AtomicExpr::AO__atomic_load:
-    return Ordering != AtomicExpr::AO_ABI_memory_order_release &&
-           Ordering != AtomicExpr::AO_ABI_memory_order_acq_rel;
+    return OrderingCABI != llvm::AtomicOrderingCABI::release &&
+           OrderingCABI != llvm::AtomicOrderingCABI::acq_rel;
 
   case AtomicExpr::AO__c11_atomic_store:
   case AtomicExpr::AO__atomic_store:
   case AtomicExpr::AO__atomic_store_n:
-    return Ordering != AtomicExpr::AO_ABI_memory_order_consume &&
-           Ordering != AtomicExpr::AO_ABI_memory_order_acquire &&
-           Ordering != AtomicExpr::AO_ABI_memory_order_acq_rel;
+    return OrderingCABI != llvm::AtomicOrderingCABI::consume &&
+           OrderingCABI != llvm::AtomicOrderingCABI::acquire &&
+           OrderingCABI != llvm::AtomicOrderingCABI::acq_rel;
 
   default:
     return true;
@@ -2702,6 +2702,7 @@ bool Sema::SemaBuiltinVAStartImpl(CallExpr *TheCall) {
   // block.
   QualType Type;
   SourceLocation ParamLoc;
+  bool IsCRegister = false;
 
   if (const DeclRefExpr *DR = dyn_cast<DeclRefExpr>(Arg)) {
     if (const ParmVarDecl *PV = dyn_cast<ParmVarDecl>(DR->getDecl())) {
@@ -2718,15 +2719,21 @@ bool Sema::SemaBuiltinVAStartImpl(CallExpr *TheCall) {
 
       Type = PV->getType();
       ParamLoc = PV->getLocation();
+      IsCRegister =
+          PV->getStorageClass() == SC_Register && !getLangOpts().CPlusPlus;
     }
   }
 
   if (!SecondArgIsLastNamedArgument)
     Diag(TheCall->getArg(1)->getLocStart(),
-         diag::warn_second_parameter_of_va_start_not_last_named_argument);
-  else if (Type->isReferenceType()) {
-    Diag(Arg->getLocStart(),
-         diag::warn_va_start_of_reference_type_is_undefined);
+         diag::warn_second_arg_of_va_start_not_last_named_param);
+  else if (IsCRegister || Type->isReferenceType() ||
+           Type->isPromotableIntegerType() ||
+           Type->isSpecificBuiltinType(BuiltinType::Float)) {
+    unsigned Reason = 0;
+    if (Type->isReferenceType())  Reason = 1;
+    else if (IsCRegister)         Reason = 2;
+    Diag(Arg->getLocStart(), diag::warn_va_start_type_is_undefined) << Reason;
     Diag(ParamLoc, diag::note_parameter_type) << Type;
   }
 
@@ -7382,19 +7389,70 @@ void DiagnoseImpCast(Sema &S, Expr *E, QualType T, SourceLocation CContext,
   DiagnoseImpCast(S, E, E->getType(), T, CContext, diag, pruneControlFlow);
 }
 
-/// Diagnose an implicit cast from a literal expression. Does not warn when the
-/// cast wouldn't lose information.
-void DiagnoseFloatingLiteralImpCast(Sema &S, FloatingLiteral *FL, QualType T,
-                                    SourceLocation CContext) {
-  // Try to convert the literal exactly to an integer. If we can, don't warn.
+
+/// Diagnose an implicit cast from a floating point value to an integer value.
+void DiagnoseFloatingImpCast(Sema &S, Expr *E, QualType T,
+
+                             SourceLocation CContext) {
+  const bool IsBool = T->isSpecificBuiltinType(BuiltinType::Bool);
+  const bool PruneWarnings = !S.ActiveTemplateInstantiations.empty();
+
+  Expr *InnerE = E->IgnoreParenImpCasts();
+  // We also want to warn on, e.g., "int i = -1.234"
+  if (UnaryOperator *UOp = dyn_cast<UnaryOperator>(InnerE))
+    if (UOp->getOpcode() == UO_Minus || UOp->getOpcode() == UO_Plus)
+      InnerE = UOp->getSubExpr()->IgnoreParenImpCasts();
+
+  const bool IsLiteral =
+      isa<FloatingLiteral>(E) || isa<FloatingLiteral>(InnerE);
+
+  llvm::APFloat Value(0.0);
+  bool IsConstant =
+    E->EvaluateAsFloat(Value, S.Context, Expr::SE_AllowSideEffects);
+  if (!IsConstant) {
+    return DiagnoseImpCast(S, E, T, CContext,
+                           diag::warn_impcast_float_integer, PruneWarnings);
+  }
+
   bool isExact = false;
-  const llvm::APFloat &Value = FL->getValue();
+
   llvm::APSInt IntegerValue(S.Context.getIntWidth(T),
                             T->hasUnsignedIntegerRepresentation());
-  if (Value.convertToInteger(IntegerValue,
-                             llvm::APFloat::rmTowardZero, &isExact)
-      == llvm::APFloat::opOK && isExact)
-    return;
+  if (Value.convertToInteger(IntegerValue, llvm::APFloat::rmTowardZero,
+                             &isExact) == llvm::APFloat::opOK &&
+      isExact) {
+    if (IsLiteral) return;
+    return DiagnoseImpCast(S, E, T, CContext, diag::warn_impcast_float_integer,
+                           PruneWarnings);
+  }
+
+  unsigned DiagID = 0;
+  if (IsLiteral) {
+    // Warn on floating point literal to integer.
+    DiagID = diag::warn_impcast_literal_float_to_integer;
+  } else if (IntegerValue == 0) {
+    if (Value.isZero()) {  // Skip -0.0 to 0 conversion.
+      return DiagnoseImpCast(S, E, T, CContext,
+                             diag::warn_impcast_float_integer, PruneWarnings);
+    }
+    // Warn on non-zero to zero conversion.
+    DiagID = diag::warn_impcast_float_to_integer_zero;
+  } else {
+    if (IntegerValue.isUnsigned()) {
+      if (!IntegerValue.isMaxValue()) {
+        return DiagnoseImpCast(S, E, T, CContext,
+                               diag::warn_impcast_float_integer, PruneWarnings);
+      }
+    } else {  // IntegerValue.isSigned()
+      if (!IntegerValue.isMaxSignedValue() &&
+          !IntegerValue.isMinSignedValue()) {
+        return DiagnoseImpCast(S, E, T, CContext,
+                               diag::warn_impcast_float_integer, PruneWarnings);
+      }
+    }
+    // Warn on evaluatable floating point expression to integer conversion.
+    DiagID = diag::warn_impcast_float_to_integer;
+  }
 
   // FIXME: Force the precision of the source value down so we don't print
   // digits which are usually useless (we don't really care here if we
@@ -7407,14 +7465,22 @@ void DiagnoseFloatingLiteralImpCast(Sema &S, FloatingLiteral *FL, QualType T,
   Value.toString(PrettySourceValue, precision);
 
   SmallString<16> PrettyTargetValue;
-  if (T->isSpecificBuiltinType(BuiltinType::Bool))
+  if (IsBool)
     PrettyTargetValue = Value.isZero() ? "false" : "true";
   else
     IntegerValue.toString(PrettyTargetValue);
 
-  S.Diag(FL->getExprLoc(), diag::warn_impcast_literal_float_to_integer)
-    << FL->getType() << T.getUnqualifiedType() << PrettySourceValue
-    << PrettyTargetValue << FL->getSourceRange() << SourceRange(CContext);
+  if (PruneWarnings) {
+    S.DiagRuntimeBehavior(E->getExprLoc(), E,
+                          S.PDiag(DiagID)
+                              << E->getType() << T.getUnqualifiedType()
+                              << PrettySourceValue << PrettyTargetValue
+                              << E->getSourceRange() << SourceRange(CContext));
+  } else {
+    S.Diag(E->getExprLoc(), DiagID)
+        << E->getType() << T.getUnqualifiedType() << PrettySourceValue
+        << PrettyTargetValue << E->getSourceRange() << SourceRange(CContext);
+  }
 }
 
 std::string PrettyPrintInRange(const llvm::APSInt &Value, IntRange Range) {
@@ -7748,22 +7814,12 @@ void CheckImplicitConversion(Sema &S, Expr *E, QualType T,
       return;
     }
 
-    // If the target is integral, always warn.    
+    // If the target is integral, always warn.
     if (TargetBT && TargetBT->isInteger()) {
       if (S.SourceMgr.isInSystemMacro(CC))
         return;
-      
-      Expr *InnerE = E->IgnoreParenImpCasts();
-      // We also want to warn on, e.g., "int i = -1.234"
-      if (UnaryOperator *UOp = dyn_cast<UnaryOperator>(InnerE))
-        if (UOp->getOpcode() == UO_Minus || UOp->getOpcode() == UO_Plus)
-          InnerE = UOp->getSubExpr()->IgnoreParenImpCasts();
 
-      if (FloatingLiteral *FL = dyn_cast<FloatingLiteral>(InnerE)) {
-        DiagnoseFloatingLiteralImpCast(S, FL, T, CC);
-      } else {
-        DiagnoseImpCast(S, E, T, CC, diag::warn_impcast_float_integer);
-      }
+      DiagnoseFloatingImpCast(S, E, T, CC);
     }
 
     // Detect the case where a call result is converted from floating-point to

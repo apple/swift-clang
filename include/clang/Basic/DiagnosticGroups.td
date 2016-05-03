@@ -46,7 +46,13 @@ def BoolConversion : DiagGroup<"bool-conversion", [PointerBoolConversion,
                                                    UndefinedBoolConversion]>;
 def IntConversion : DiagGroup<"int-conversion">;
 def EnumConversion : DiagGroup<"enum-conversion">;
-def FloatConversion : DiagGroup<"float-conversion">;
+
+def FloatOverflowConversion : DiagGroup<"float-overflow-conversion">;
+def FloatZeroConversion : DiagGroup<"float-zero-conversion">;
+def FloatConversion :
+  DiagGroup<"float-conversion", [FloatOverflowConversion,
+                                 FloatZeroConversion]>;
+
 def DoublePromotion : DiagGroup<"double-promotion">;
 def EnumTooLarge : DiagGroup<"enum-too-large">;
 def UnsupportedNan : DiagGroup<"unsupported-nan">;
@@ -75,6 +81,8 @@ def : DiagGroup<"ctor-dtor-privacy">;
 def GNUDesignator : DiagGroup<"gnu-designator">;
 def GNUStringLiteralOperatorTemplate :
   DiagGroup<"gnu-string-literal-operator-template">;
+def UndefinedVarTemplate : DiagGroup<"undefined-var-template">;
+def UndefinedFuncTemplate : DiagGroup<"undefined-func-template">;
 
 def DeleteIncomplete : DiagGroup<"delete-incomplete">;
 def DeleteNonVirtualDtor : DiagGroup<"delete-non-virtual-dtor">;
@@ -284,8 +292,6 @@ def : DiagGroup<"overflow">;
 def ForwardClassReceiver : DiagGroup<"receiver-forward-class">;
 def MethodAccess : DiagGroup<"objc-method-access">;
 def ObjCReceiver : DiagGroup<"receiver-expr">;
-// FIXME: Remove this when Xcode removes the warning setting.
-def : DiagGroup<"receiver-is-weak">;
 def OperatorNewReturnsNull : DiagGroup<"new-returns-null">;
 def OverlengthStrings : DiagGroup<"overlength-strings">;
 def OverloadedVirtual : DiagGroup<"overloaded-virtual">;
@@ -331,7 +337,16 @@ def SelfMove : DiagGroup<"self-move">;
 def SemiBeforeMethodBody : DiagGroup<"semicolon-before-method-body">;
 def Sentinel : DiagGroup<"sentinel">;
 def MissingMethodReturnType : DiagGroup<"missing-method-return-type">;
-def Shadow : DiagGroup<"shadow">;
+
+def ShadowFieldInConstructorModified : DiagGroup<"shadow-field-in-constructor-modified">;
+def ShadowFieldInConstructor : DiagGroup<"shadow-field-in-constructor",
+                                         [ShadowFieldInConstructorModified]>;
+
+// -Wshadow-all is a catch-all for all shadowing. -Wshadow is just the
+// shadowing that we think is unsafe.
+def Shadow : DiagGroup<"shadow", [ShadowFieldInConstructorModified]>;
+def ShadowAll : DiagGroup<"shadow-all", [Shadow, ShadowFieldInConstructor]>;
+
 def Shorten64To32 : DiagGroup<"shorten-64-to-32">;
 def : DiagGroup<"sign-promo">;
 def SignCompare : DiagGroup<"sign-compare">;

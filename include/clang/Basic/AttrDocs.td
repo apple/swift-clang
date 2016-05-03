@@ -494,6 +494,15 @@ Query for this feature with ``__has_attribute(objc_method_family)``.
   }];
 }
 
+def NoDebugDocs : Documentation {
+  let Category = DocCatVariable;
+  let Content = [{
+The ``nodebug`` attribute allows you to suppress debugging information for a
+function, or for a variable declared with static storage duration, such as
+globals, class static data members, and static locals.
+  }];
+}
+
 def NoDuplicateDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
@@ -1995,6 +2004,35 @@ All of these conventions except ``none`` require the function to have an error p
 * ``swift_error(nonzero_result)`` means that calls to the function should be considered to have thrown if they return a non-zero result.  The return type must be an integral type.  If the return type would have been imported as ``Bool``, it is instead imported as ``Void``.
 
 * ``swift_error(nonnull_error)`` means that calls to the function should be considered to have thrown if they leave a non-null error in the error parameter.  The return type is left unmodified.
+
+}];
+}
+
+def SwiftNewtypeDocs : Documentation {
+  let Category = SwiftDocs;
+  let Heading = "swift_newtype";
+  let Content = [{
+The ``swift_newtype`` attribute indicates that the typedef to which the attribute appertains is imported as a new Swift type of the typedef's name.
+* ``swift_newtype(struct)`` means that a Swift struct will be created for this typedef.
+* ``swift_newtype(enum)`` means that a Swift enum will be created for this typedef.
+  }];
+}
+
+
+def OMPDeclareTargetDocs : Documentation {
+  let Category = DocCatFunction;
+  let Heading = "#pragma omp declare target";
+  let Content = [{
+The `declare target` directive specifies that variables and functions are mapped
+to a device for OpenMP offload mechanism.
+
+The syntax of the declare target directive is as follows:
+
+  .. code-block:: c
+
+  #pragma omp declare target new-line
+  declarations-definition-seq
+  #pragma omp end declare target new-line
   }];
 }
 
@@ -2409,5 +2447,12 @@ The symbol name of the resolver function is given in quotes.  A function with th
 The ``ifunc`` attribute may only be used on a function declaration.  A function declaration with an ``ifunc`` attribute is considered to be a definition of the declared entity.  The entity must not have weak linkage; for example, in C++, it cannot be applied to a declaration if a definition at that location would be considered inline.
 
 Not all targets support this attribute.  ELF targets support this attribute when using binutils v2.20.1 or higher and glibc v2.11.1 or higher.  Non-ELF targets currently do not support this attribute.
+  }];
+}
+
+def LTOVisibilityDocs : Documentation {
+  let Category = DocCatType;
+  let Content = [{
+See :doc:`LTOVisibility`.
   }];
 }

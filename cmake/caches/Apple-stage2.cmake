@@ -17,6 +17,9 @@ set(CLANG_PLUGIN_SUPPORT OFF CACHE BOOL "")
 set(BUG_REPORT_URL "http://developer.apple.com/bugreporter/" CACHE STRING "")
 set(LLVM_ENABLE_TIMESTAMPS OFF CACHE BOOL "Don't time-stamp shipping builds - this makes builds reproducible")
 
+set(LLVM_BUILD_EXTERNAL_COMPILER_RT ON CACHE BOOL "Build Compiler-RT with just-built clang")
+set(COMPILER_RT_ENABLE_IOS ON CACHE BOOL "Build iOS Compiler-RT libraries")
+
 # Make unit tests (if present) part of the ALL target
 set(LLVM_BUILD_TESTS ON CACHE BOOL "")
 # Don't build or run the compiler-rt tests
@@ -31,7 +34,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -gline-tables-only -DNDEBUG" CACHE STRIN
 set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "")
 
 set(LIBCXX_INSTALL_LIBRARY OFF CACHE BOOL "")
-set(LIBCXX_INSTALL_HEADERS OFF CACHE BOOL "")
+set(LIBCXX_INSTALL_HEADERS ON CACHE BOOL "")
 set(LIBCXX_INCLUDE_TESTS OFF CACHE BOOL "")
 set(LLVM_LTO_VERSION_OFFSET 3000 CACHE STRING "")
 
@@ -51,6 +54,8 @@ set(LLVM_DISTRIBUTION_COMPONENTS
   clang
   LTO
   clang-format
+  clang-headers
+  libcxx-headers
   ${LLVM_TOOLCHAIN_TOOLS}
   CACHE STRING "")
 

@@ -39,6 +39,7 @@ enum : SanitizerMask {
   TrappingSupported =
       (Undefined & ~Vptr) | UnsignedIntegerOverflow | LocalBounds | CFI,
   TrappingDefault = CFI,
+  CFIClasses = CFIVCall | CFINVCall | CFIDerivedCast | CFIUnrelatedCast,
 };
 
 enum CoverageFeature {
@@ -311,7 +312,12 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
       std::make_pair(Leak, Memory), std::make_pair(KernelAddress, Address),
       std::make_pair(KernelAddress, Leak),
       std::make_pair(KernelAddress, Thread),
-      std::make_pair(KernelAddress, Memory)};
+      std::make_pair(KernelAddress, Memory),
+      std::make_pair(Efficiency, Address),
+      std::make_pair(Efficiency, Leak),
+      std::make_pair(Efficiency, Thread),
+      std::make_pair(Efficiency, Memory),
+      std::make_pair(Efficiency, KernelAddress)};
   for (auto G : IncompatibleGroups) {
     SanitizerMask Group = G.first;
     if (Kinds & Group) {
@@ -482,6 +488,8 @@ SanitizerArgs::SanitizerArgs(const ToolChain &TC,
       if ((CoverageFeatures & CoverageTracePC) ||
           (AllAddedKinds & SupportsCoverage)) {
         Arg->claim();
+      } else {
+        CoverageFeatures = 0;
       }
     } else if (Arg->getOption().matches(options::OPT_fno_sanitize_coverage)) {
       Arg->claim();
@@ -674,6 +682,16 @@ void SanitizerArgs::addArgs(const ToolChain &TC, const llvm::opt::ArgList &Args,
                                          TC.getCompilerRT(Args, "stats")));
     addIncludeLinkerOption(TC, Args, CmdArgs, "__sanitizer_stats_register");
   }
+
+  // Require -fvisibility= flag on non-Windows when compiling if vptr CFI is
+  // enabled.
+  if (Sanitizers.hasOneOf(CFIClasses) && !TC.getTriple().isOSWindows() &&
+      !Args.hasArg(options::OPT_fvisibility_EQ)) {
+    TC.getDriver().Diag(clang::diag::err_drv_argument_only_allowed_with)
+        << lastArgumentForMask(TC.getDriver(), Args,
+                               Sanitizers.Mask & CFIClasses)
+        << "-fvisibility=";
+  }
 }
 
 SanitizerMask parseArgValues(const Driver &D, const llvm::opt::Arg *A,
@@ -692,6 +710,10 @@ SanitizerMask parseArgValues(const Driver &D, const llvm::opt::Arg *A,
     // Special case: don't accept -fsanitize=all.
     if (A->getOption().matches(options::OPT_fsanitize_EQ) &&
         0 == strcmp("all", Value))
+      Kind = 0;
+    // Similarly, don't accept -fsanitize=efficiency-all.
+    else if (A->getOption().matches(options::OPT_fsanitize_EQ) &&
+        0 == strcmp("efficiency-all", Value))
       Kind = 0;
     else
       Kind = parseSanitizerValue(Value, /*AllowGroups=*/true);

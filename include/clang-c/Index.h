@@ -2950,7 +2950,14 @@ enum CXTypeKind {
   CXType_VariableArray = 115,
   CXType_DependentSizedArray = 116,
   CXType_MemberPointer = 117,
-  CXType_Auto = 118
+  CXType_Auto = 118,
+
+  /**
+   * \brief Represents a type that was referred to using an elaborated type keyword.
+   *
+   * E.g., struct S, or via a qualified name, e.g., N::M::type, or both.
+   */
+  CXType_Elaborated = 119
 };
 
 /**
@@ -3338,6 +3345,13 @@ CINDEX_LINKAGE CXType clang_getArrayElementType(CXType T);
  * If a non-array type is passed in, -1 is returned.
  */
 CINDEX_LINKAGE long long clang_getArraySize(CXType T);
+
+/**
+ * \brief Retrieve the type named by the qualified-id.
+ *
+ * If a non-elaborated type is passed in, an invalid type is returned.
+ */
+CINDEX_LINKAGE CXType clang_Type_getNamedType(CXType T);
 
 /**
  * \brief List the possible error codes for \c clang_Type_getSizeOf,
@@ -4074,9 +4088,34 @@ CXFile clang_Module_getTopLevelHeader(CXTranslationUnit,
  */
 
 /**
+ * \brief Determine if a C++ constructor is a converting constructor.
+ */
+CINDEX_LINKAGE unsigned clang_CXXConstructor_isConvertingConstructor(CXCursor C);
+
+/**
+ * \brief Determine if a C++ constructor is a copy constructor.
+ */
+CINDEX_LINKAGE unsigned clang_CXXConstructor_isCopyConstructor(CXCursor C);
+
+/**
+ * \brief Determine if a C++ constructor is the default constructor.
+ */
+CINDEX_LINKAGE unsigned clang_CXXConstructor_isDefaultConstructor(CXCursor C);
+
+/**
+ * \brief Determine if a C++ constructor is a move constructor.
+ */
+CINDEX_LINKAGE unsigned clang_CXXConstructor_isMoveConstructor(CXCursor C);
+
+/**
  * \brief Determine if a C++ field is declared 'mutable'.
  */
 CINDEX_LINKAGE unsigned clang_CXXField_isMutable(CXCursor C);
+
+/**
+ * \brief Determine if a C++ method is declared '= default'.
+ */
+CINDEX_LINKAGE unsigned clang_CXXMethod_isDefaulted(CXCursor C);
 
 /**
  * \brief Determine if a C++ member function or member function template is

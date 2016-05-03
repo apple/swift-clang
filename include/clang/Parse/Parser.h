@@ -1873,7 +1873,6 @@ private:
 
   bool isDeclarationSpecifier(bool DisambiguatingWithExpression = false);
   bool isTypeSpecifierQualifier();
-  bool isTypeQualifier() const;
 
   /// isKnownToBeTypeSpecifier - Return true if we know that the specified token
   /// is definitely a type-specifier.  Return false if it isn't part of a type
@@ -2240,6 +2239,14 @@ private:
                                         IdentifierInfo *ScopeName,
                                         SourceLocation ScopeLoc,
                                         AttributeList::Syntax Syntax);
+
+  void ParseSwiftNewtypeAttribute(IdentifierInfo &SwiftNewtype,
+                                  SourceLocation SwiftNewtypeLoc,
+                                  ParsedAttributes &attrs,
+                                  SourceLocation *endLoc,
+                                  IdentifierInfo *ScopeName,
+                                  SourceLocation ScopeLoc,
+                                  AttributeList::Syntax Syntax);
 
   void ParseAttributeWithTypeArg(IdentifierInfo &AttrName,
                                  SourceLocation AttrNameLoc,

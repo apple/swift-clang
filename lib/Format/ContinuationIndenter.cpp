@@ -64,7 +64,7 @@ static bool startsNextParameter(const FormatToken &Current,
 
 ContinuationIndenter::ContinuationIndenter(const FormatStyle &Style,
                                            const AdditionalKeywords &Keywords,
-                                           SourceManager &SourceMgr,
+                                           const SourceManager &SourceMgr,
                                            WhitespaceManager &Whitespaces,
                                            encoding::Encoding Encoding,
                                            bool BinPackInconclusiveFunctions)
@@ -479,7 +479,7 @@ unsigned ContinuationIndenter::addTokenOnNewLine(LineState &State,
   // is common and should be formatted like a free-standing function.
   if (Style.Language != FormatStyle::LK_JavaScript ||
       Current.NestingLevel != 0 || !PreviousNonComment->is(tok::equal) ||
-      !Current.is(Keywords.kw_function))
+      !Current.isOneOf(Keywords.kw_async, Keywords.kw_function))
     State.Stack.back().NestedBlockIndent = State.Column;
 
   if (NextNonComment->isMemberAccess()) {

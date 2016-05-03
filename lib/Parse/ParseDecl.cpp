@@ -238,6 +238,38 @@ IdentifierLoc *Parser::ParseIdentifierLoc() {
   return IL;
 }
 
+void Parser::ParseSwiftNewtypeAttribute(
+    IdentifierInfo &SwiftNewtype, SourceLocation SwiftNewtypeLoc,
+    ParsedAttributes &attrs, SourceLocation *endLoc, IdentifierInfo *ScopeName,
+    SourceLocation ScopeLoc, AttributeList::Syntax Syntax) {
+
+  BalancedDelimiterTracker Parens(*this, tok::l_paren);
+  Parens.consumeOpen();
+
+  if (Tok.is(tok::r_paren)) {
+    Diag(Tok.getLocation(), diag::err_argument_required_after_attribute);
+    Parens.consumeClose();
+    return;
+  }
+  if (Tok.isNot(tok::kw_struct) && Tok.isNot(tok::kw_enum)) {
+    Diag(Tok.getLocation(), diag::warn_attribute_type_not_supported)
+        << &SwiftNewtype << Tok.getIdentifierInfo();
+    if (!isTokenSpecial())
+      ConsumeToken();
+    Parens.consumeClose();
+    return;
+  }
+  auto IL = IdentifierLoc::create(Actions.Context, Tok.getLocation(),
+                                  Tok.getIdentifierInfo());
+  ConsumeToken();
+  auto identLoc = ArgsUnion(IL);
+
+  attrs.addNew(&SwiftNewtype,
+               SourceRange(SwiftNewtypeLoc, Parens.getCloseLocation()),
+               ScopeName, ScopeLoc, &identLoc, 1, Syntax);
+  Parens.consumeClose();
+}
+
 void Parser::ParseAttributeWithTypeArg(IdentifierInfo &AttrName,
                                        SourceLocation AttrNameLoc,
                                        ParsedAttributes &Attrs,
@@ -356,6 +388,10 @@ void Parser::ParseGNUAttributeArgs(IdentifierInfo *AttrName,
   } else if (AttrKind == AttributeList::AT_TypeTagForDatatype) {
     ParseTypeTagForDatatypeAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
                                      ScopeName, ScopeLoc, Syntax);
+    return;
+  } else if (AttrKind == AttributeList::AT_SwiftNewtype) {
+    ParseSwiftNewtypeAttribute(*AttrName, AttrNameLoc, Attrs, EndLoc,
+                               ScopeName, ScopeLoc, Syntax);
     return;
   } else if (attributeIsTypeArgAttr(*AttrName)) {
     ParseAttributeWithTypeArg(*AttrName, AttrNameLoc, Attrs, EndLoc, ScopeName,
@@ -2004,7 +2040,7 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
         TemplateParameterLists FakedParamLists;
         FakedParamLists.push_back(Actions.ActOnTemplateParameterList(
             0, SourceLocation(), TemplateInfo.TemplateLoc, LAngleLoc, None,
-            LAngleLoc));
+            LAngleLoc, nullptr));
 
         ThisDecl =
             Actions.ActOnTemplateDeclarator(getCurScope(), FakedParamLists, D);
@@ -4252,27 +4288,6 @@ void Parser::ParseEnumBody(SourceLocation StartLoc, Decl *EnumDecl) {
     // ';' after the definition.
     PP.EnterToken(Tok);
     Tok.setKind(tok::semi);
-  }
-}
-
-/// isTypeSpecifierQualifier - Return true if the current token could be the
-/// start of a type-qualifier-list.
-bool Parser::isTypeQualifier() const {
-  switch (Tok.getKind()) {
-  default: return false;
-  // type-qualifier
-  case tok::kw_const:
-  case tok::kw_volatile:
-  case tok::kw_restrict:
-  case tok::kw___private:
-  case tok::kw___local:
-  case tok::kw___global:
-  case tok::kw___constant:
-  case tok::kw___generic:
-  case tok::kw___read_only:
-  case tok::kw___read_write:
-  case tok::kw___write_only:
-    return true;
   }
 }
 

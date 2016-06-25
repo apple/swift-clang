@@ -191,6 +191,8 @@ public:
           CXXThisFieldDecl = *Field;
         else if (I->capturesVariable())
           CaptureFields[I->getCapturedVar()] = *Field;
+        else if (I->capturesVariableByCopy())
+          CaptureFields[I->getCapturedVar()] = *Field;
       }
     }
 
@@ -2228,8 +2230,6 @@ public:
   llvm::Function *EmitCapturedStmt(const CapturedStmt &S, CapturedRegionKind K);
   llvm::Function *GenerateCapturedStmtFunction(const CapturedStmt &S);
   Address GenerateCapturedStmtArgument(const CapturedStmt &S);
-  llvm::Function *GenerateOpenMPCapturedStmtFunction(const CapturedStmt &S,
-                                                     QualType ReturnQTy);
   llvm::Function *GenerateOpenMPCapturedStmtFunction(const CapturedStmt &S);
   void GenerateOpenMPCapturedVars(const CapturedStmt &S,
                                   SmallVectorImpl<llvm::Value *> &CapturedVars);
@@ -2379,6 +2379,7 @@ public:
   void EmitOMPTargetDataDirective(const OMPTargetDataDirective &S);
   void EmitOMPTargetEnterDataDirective(const OMPTargetEnterDataDirective &S);
   void EmitOMPTargetExitDataDirective(const OMPTargetExitDataDirective &S);
+  void EmitOMPTargetUpdateDirective(const OMPTargetUpdateDirective &S);
   void EmitOMPTargetParallelDirective(const OMPTargetParallelDirective &S);
   void
   EmitOMPTargetParallelForDirective(const OMPTargetParallelForDirective &S);
@@ -2434,7 +2435,7 @@ private:
   void EmitOMPOuterLoop(bool IsMonotonic, bool DynamicOrOrdered,
       const OMPLoopDirective &S, OMPPrivateScope &LoopScope, bool Ordered,
       Address LB, Address UB, Address ST, Address IL, llvm::Value *Chunk);
-  void EmitOMPForOuterLoop(OpenMPScheduleClauseKind ScheduleKind,
+  void EmitOMPForOuterLoop(const OpenMPScheduleTy &ScheduleKind,
                            bool IsMonotonic, const OMPLoopDirective &S,
                            OMPPrivateScope &LoopScope, bool Ordered, Address LB,
                            Address UB, Address ST, Address IL,
@@ -2495,7 +2496,6 @@ public:
   void EmitAtomicInit(Expr *E, LValue lvalue);
 
   bool LValueIsSuitableForInlineAtomic(LValue Src);
-  bool typeIsSuitableForInlineAtomic(QualType Ty, bool IsVolatile) const;
 
   RValue EmitAtomicLoad(LValue LV, SourceLocation SL,
                         AggValueSlot Slot = AggValueSlot::ignored());
@@ -3051,13 +3051,15 @@ public:
   /// ConstantFoldsToSimpleInteger - If the specified expression does not fold
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the boolean result in Result.
-  bool ConstantFoldsToSimpleInteger(const Expr *Cond, bool &Result);
+  bool ConstantFoldsToSimpleInteger(const Expr *Cond, bool &Result,
+                                    bool AllowLabels = false);
 
   /// ConstantFoldsToSimpleInteger - If the specified expression does not fold
   /// to a constant, or if it does but contains a label, return false.  If it
   /// constant folds return true and set the folded value.
-  bool ConstantFoldsToSimpleInteger(const Expr *Cond, llvm::APSInt &Result);
-  
+  bool ConstantFoldsToSimpleInteger(const Expr *Cond, llvm::APSInt &Result,
+                                    bool AllowLabels = false);
+
   /// EmitBranchOnBoolExpr - Emit a branch on a boolean condition (e.g. for an
   /// if statement) to the specified blocks.  Based on the condition, this might
   /// try to simplify the codegen of the conditional based on the branch.

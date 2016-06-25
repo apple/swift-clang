@@ -316,7 +316,6 @@ private:
   bool mangleSubstitution(TemplateName Template);
   bool mangleSubstitution(uintptr_t Ptr);
 
-  void mangleExistingSubstitution(QualType type);
   void mangleExistingSubstitution(TemplateName name);
 
   bool mangleStandardSubstitution(const NamedDecl *ND);
@@ -1992,7 +1991,7 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
   //                 ::= f  # float
   //                 ::= d  # double
   //                 ::= e  # long double, __float80
-  // UNSUPPORTED:    ::= g  # __float128
+  //                 ::= g  # __float128
   // UNSUPPORTED:    ::= Dd # IEEE 754r decimal floating point (64 bits)
   // UNSUPPORTED:    ::= De # IEEE 754r decimal floating point (128 bits)
   // UNSUPPORTED:    ::= Df # IEEE 754r decimal floating point (32 bits)
@@ -2072,6 +2071,12 @@ void CXXNameMangler::mangleType(const BuiltinType *T) {
     Out << (getASTContext().getTargetInfo().useFloat128ManglingForLongDouble()
                 ? 'g'
                 : 'e');
+    break;
+  case BuiltinType::Float128:
+    if (getASTContext().getTargetInfo().useFloat128ManglingForLongDouble())
+      Out << "U10__float128"; // Match the GCC mangling
+    else
+      Out << 'g';
     break;
   case BuiltinType::NullPtr:
     Out << "Dn";
@@ -2237,7 +2242,7 @@ void CXXNameMangler::mangleBareFunctionType(const FunctionProtoType *Proto,
     FunctionTypeDepth.enterResultType();
 
     // Mangle ns_returns_retained as an order-sensitive qualifier here.
-    if (Proto->getExtInfo().getProducesResult())
+    if (Proto->getExtInfo().getProducesResult() && FD == nullptr)
       mangleVendorQualifier("ns_returns_retained");
 
     // Mangle the return type without any direct ARC ownership qualifiers.
@@ -2263,7 +2268,7 @@ void CXXNameMangler::mangleBareFunctionType(const FunctionProtoType *Proto,
   assert(!FD || FD->getNumParams() == Proto->getNumParams());
   for (unsigned I = 0, E = Proto->getNumParams(); I != E; ++I) {
     // Mangle extended parameter info as order-sensitive qualifiers here.
-    if (Proto->hasExtParameterInfos()) {
+    if (Proto->hasExtParameterInfos() && FD == nullptr) {
       mangleExtParameterInfo(Proto->getExtParameterInfo(I));
     }
 
@@ -2730,7 +2735,7 @@ void CXXNameMangler::mangleType(const UnaryTransformType *T) {
     }
   }
 
-  mangleType(T->getUnderlyingType());
+  mangleType(T->getBaseType());
 }
 
 void CXXNameMangler::mangleType(const AutoType *T) {
@@ -3813,7 +3818,7 @@ void CXXNameMangler::mangleTemplateArg(TemplateArgument A) {
 
     Out << 'L';
     // References to external entities use the mangled name; if the name would
-    // not normally be manged then mangle it as unqualified.
+    // not normally be mangled then mangle it as unqualified.
     mangle(D);
     Out << 'E';
 
@@ -3867,12 +3872,6 @@ void CXXNameMangler::mangleSeqID(unsigned SeqID) {
     Out.write(I.base(), I - BufferRef.rbegin());
   }
   Out << '_';
-}
-
-void CXXNameMangler::mangleExistingSubstitution(QualType type) {
-  bool result = mangleSubstitution(type);
-  assert(result && "no existing substitution for type");
-  (void) result;
 }
 
 void CXXNameMangler::mangleExistingSubstitution(TemplateName tname) {

@@ -16,6 +16,7 @@
 #define LLVM_CLANG_AST_EXPRCXX_H
 
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/LambdaCapture.h"
 #include "clang/AST/TemplateBase.h"
@@ -26,9 +27,6 @@
 
 namespace clang {
 
-class CXXConstructorDecl;
-class CXXDestructorDecl;
-class CXXMethodDecl;
 class CXXTemporary;
 class MSPropertyDecl;
 class TemplateArgumentListInfo;
@@ -144,6 +142,14 @@ public:
   /// context of the CXXMethodDecl which this function is calling.
   /// FIXME: Returns 0 for member pointer call exprs.
   CXXRecordDecl *getRecordDecl() const;
+
+  SourceLocation getExprLoc() const LLVM_READONLY {
+    SourceLocation CLoc = getCallee()->getExprLoc();
+    if (CLoc.isValid())
+      return CLoc;
+
+    return getLocStart();
+  }
 
   static bool classof(const Stmt *T) {
     return T->getStmtClass() == CXXMemberCallExprClass;
@@ -1168,18 +1174,21 @@ private:
   SourceLocation Loc;
   SourceRange ParenOrBraceRange;
   unsigned NumArgs : 16;
-  bool Elidable : 1;
-  bool HadMultipleCandidates : 1;
-  bool ListInitialization : 1;
-  bool StdInitListInitialization : 1;
-  bool ZeroInitialization : 1;
+  unsigned Elidable : 1;
+  unsigned HadMultipleCandidates : 1;
+  unsigned ListInitialization : 1;
+  unsigned StdInitListInitialization : 1;
+  unsigned ZeroInitialization : 1;
   unsigned ConstructKind : 2;
   Stmt **Args;
+
+  void setConstructor(CXXConstructorDecl *C) { Constructor = C; }
 
 protected:
   CXXConstructExpr(const ASTContext &C, StmtClass SC, QualType T,
                    SourceLocation Loc,
-                   CXXConstructorDecl *d, bool elidable,
+                   CXXConstructorDecl *Ctor,
+                   bool Elidable,
                    ArrayRef<Expr *> Args,
                    bool HadMultipleCandidates,
                    bool ListInitialization,
@@ -1198,15 +1207,12 @@ protected:
 public:
   /// \brief Construct an empty C++ construction expression.
   explicit CXXConstructExpr(EmptyShell Empty)
-    : Expr(CXXConstructExprClass, Empty), Constructor(nullptr),
-      NumArgs(0), Elidable(false), HadMultipleCandidates(false),
-      ListInitialization(false), ZeroInitialization(false),
-      ConstructKind(0), Args(nullptr)
-  { }
+    : CXXConstructExpr(CXXConstructExprClass, Empty) {}
 
   static CXXConstructExpr *Create(const ASTContext &C, QualType T,
                                   SourceLocation Loc,
-                                  CXXConstructorDecl *D, bool Elidable,
+                                  CXXConstructorDecl *Ctor,
+                                  bool Elidable,
                                   ArrayRef<Expr *> Args,
                                   bool HadMultipleCandidates,
                                   bool ListInitialization,
@@ -1215,8 +1221,8 @@ public:
                                   ConstructionKind ConstructKind,
                                   SourceRange ParenOrBraceRange);
 
+  /// \brief Get the constructor that this expression will (ultimately) call.
   CXXConstructorDecl *getConstructor() const { return Constructor; }
-  void setConstructor(CXXConstructorDecl *C) { Constructor = C; }
 
   SourceLocation getLocation() const { return Loc; }
   void setLocation(SourceLocation Loc) { this->Loc = Loc; }
@@ -1382,7 +1388,8 @@ class CXXTemporaryObjectExpr : public CXXConstructExpr {
   TypeSourceInfo *Type;
 
 public:
-  CXXTemporaryObjectExpr(const ASTContext &C, CXXConstructorDecl *Cons,
+  CXXTemporaryObjectExpr(const ASTContext &C,
+                         CXXConstructorDecl *Cons,
                          TypeSourceInfo *Type,
                          ArrayRef<Expr *> Args,
                          SourceRange ParenOrBraceRange,
@@ -1751,12 +1758,12 @@ class CXXNewExpr : public Expr {
   SourceRange DirectInitRange;
 
   /// Was the usage ::new, i.e. is the global new to be used?
-  bool GlobalNew : 1;
+  unsigned GlobalNew : 1;
   /// Do we allocate an array? If so, the first SubExpr is the size expression.
-  bool Array : 1;
+  unsigned Array : 1;
   /// If this is an array allocation, does the usual deallocation
   /// function for the allocated type want to know the allocated size?
-  bool UsualArrayDeleteWantsSize : 1;
+  unsigned UsualArrayDeleteWantsSize : 1;
   /// The number of placement new arguments.
   unsigned NumPlacementArgs : 13;
   /// What kind of initializer do we have? Could be none, parens, or braces.
@@ -2355,7 +2362,7 @@ class ExpressionTraitExpr : public Expr {
   /// \brief The trait. A ExpressionTrait enum in MSVC compatible unsigned.
   unsigned ET : 31;
   /// \brief The value of the type trait. Unspecified if dependent.
-  bool Value : 1;
+  unsigned Value : 1;
 
   /// \brief The location of the type trait keyword.
   SourceLocation Loc;
@@ -2865,7 +2872,8 @@ private:
   Stmt *SubExpr;
 
   ExprWithCleanups(EmptyShell, unsigned NumObjects);
-  ExprWithCleanups(Expr *SubExpr, ArrayRef<CleanupObject> Objects);
+  ExprWithCleanups(Expr *SubExpr, bool CleanupsHaveSideEffects,
+                   ArrayRef<CleanupObject> Objects);
 
   friend TrailingObjects;
   friend class ASTStmtReader;
@@ -2875,6 +2883,7 @@ public:
                                   unsigned numObjects);
 
   static ExprWithCleanups *Create(const ASTContext &C, Expr *subexpr,
+                                  bool CleanupsHaveSideEffects,
                                   ArrayRef<CleanupObject> objects);
 
   ArrayRef<CleanupObject> getObjects() const {
@@ -2891,6 +2900,9 @@ public:
 
   Expr *getSubExpr() { return cast<Expr>(SubExpr); }
   const Expr *getSubExpr() const { return cast<Expr>(SubExpr); }
+  bool cleanupsHaveSideEffects() const {
+    return ExprWithCleanupsBits.CleanupsHaveSideEffects;
+  }
 
   /// As with any mutator of the AST, be very careful
   /// when modifying an existing AST to preserve its invariants.

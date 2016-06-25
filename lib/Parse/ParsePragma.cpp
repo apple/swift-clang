@@ -468,14 +468,24 @@ void Parser::HandlePragmaOpenCLExtension() {
   ConsumeToken(); // The annotation token.
 
   OpenCLOptions &f = Actions.getOpenCLOptions();
+  auto CLVer = getLangOpts().OpenCLVersion;
+  auto &Supp = getTargetInfo().getSupportedOpenCLOpts();
   // OpenCL 1.1 9.1: "The all variant sets the behavior for all extensions,
   // overriding all previously issued extension directives, but only if the
   // behavior is set to disable."
   if (state == 0 && ename->isStr("all")) {
-#define OPENCLEXT(nm)   f.nm = 0;
+#define OPENCLEXT(nm) \
+    if (Supp.is_##nm##_supported_extension(CLVer)) \
+      f.nm = 0;
 #include "clang/Basic/OpenCLExtensions.def"
   }
-#define OPENCLEXT(nm) else if (ename->isStr(#nm)) { f.nm = state; }
+#define OPENCLEXT(nm) else if (ename->isStr(#nm)) \
+   if (Supp.is_##nm##_supported_extension(CLVer)) \
+     f.nm = state; \
+   else if (Supp.is_##nm##_supported_core(CLVer)) \
+     PP.Diag(NameLoc, diag::warn_pragma_extension_is_core) << ename; \
+   else \
+     PP.Diag(NameLoc, diag::warn_pragma_unsupported_extension) << ename;
 #include "clang/Basic/OpenCLExtensions.def"
   else {
     PP.Diag(NameLoc, diag::warn_pragma_unknown_extension) << ename;
@@ -816,20 +826,25 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
 
   // If no option is specified the argument is assumed to be a constant expr.
   bool OptionUnroll = false;
+  bool OptionDistribute = false;
   bool StateOption = false;
   if (OptionInfo) { // Pragma Unroll does not specify an option.
     OptionUnroll = OptionInfo->isStr("unroll");
+    OptionDistribute = OptionInfo->isStr("distribute");
     StateOption = llvm::StringSwitch<bool>(OptionInfo->getName())
                       .Case("vectorize", true)
                       .Case("interleave", true)
-                      .Default(false) || OptionUnroll;
+                      .Default(false) ||
+                  OptionUnroll || OptionDistribute;
   }
 
+  bool AssumeSafetyArg = !OptionUnroll && !OptionDistribute;
   // Verify loop hint has an argument.
   if (Toks[0].is(tok::eof)) {
     ConsumeToken(); // The annotation token.
     Diag(Toks[0].getLocation(), diag::err_pragma_loop_missing_argument)
-        << /*StateArgument=*/StateOption << /*FullKeyword=*/OptionUnroll;
+        << /*StateArgument=*/StateOption << /*FullKeyword=*/OptionUnroll
+        << /*AssumeSafetyKeyword=*/AssumeSafetyArg;
     return false;
   }
 
@@ -843,11 +858,12 @@ bool Parser::HandlePragmaLoopHint(LoopHint &Hint) {
                  llvm::StringSwitch<bool>(StateInfo->getName())
                      .Cases("enable", "disable", true)
                      .Case("full", OptionUnroll)
-                     .Case("assume_safety", !OptionUnroll)
+                     .Case("assume_safety", AssumeSafetyArg)
                      .Default(false);
     if (!Valid) {
       Diag(Toks[0].getLocation(), diag::err_pragma_invalid_keyword)
-          << /*FullKeyword=*/OptionUnroll;
+          << /*FullKeyword=*/OptionUnroll
+          << /*AssumeSafetyKeyword=*/AssumeSafetyArg;
       return false;
     }
     if (Toks.size() > 2)
@@ -1995,6 +2011,7 @@ void PragmaLoopHintHandler::HandlePragma(Preprocessor &PP,
                            .Case("vectorize", true)
                            .Case("interleave", true)
                            .Case("unroll", true)
+                           .Case("distribute", true)
                            .Case("vectorize_width", true)
                            .Case("interleave_count", true)
                            .Case("unroll_count", true)

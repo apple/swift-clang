@@ -34,6 +34,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/TargetRegistry.h"
 #include <memory>
+#include <utility>
 
 using namespace clang;
 
@@ -104,7 +105,7 @@ class PCHContainerGenerator : public ASTConsumer {
         return true;
 
       SmallVector<QualType, 16> ArgTypes;
-      for (auto i : D->params())
+      for (auto i : D->parameters())
         ArgTypes.push_back(i->getType());
       QualType RetTy = D->getReturnType();
       QualType FnTy = Ctx.getFunctionType(RetTy, ArgTypes,
@@ -123,7 +124,7 @@ class PCHContainerGenerator : public ASTConsumer {
       ArgTypes.push_back(D->getSelfType(Ctx, D->getClassInterface(),
                                         selfIsPseudoStrong, selfIsConsumed));
       ArgTypes.push_back(Ctx.getObjCSelType());
-      for (auto i : D->params())
+      for (auto i : D->parameters())
         ArgTypes.push_back(i->getType());
       QualType RetTy = D->getReturnType();
       QualType FnTy = Ctx.getFunctionType(RetTy, ArgTypes,
@@ -145,13 +146,14 @@ public:
         HeaderSearchOpts(CI.getHeaderSearchOpts()),
         PreprocessorOpts(CI.getPreprocessorOpts()),
         TargetOpts(CI.getTargetOpts()), LangOpts(CI.getLangOpts()), OS(OS),
-        Buffer(Buffer) {
+        Buffer(std::move(Buffer)) {
     // The debug info output isn't affected by CodeModel and
     // ThreadModel, but the backend expects them to be nonempty.
     CodeGenOpts.CodeModel = "default";
     CodeGenOpts.ThreadModel = "single";
     CodeGenOpts.DebugTypeExtRefs = true;
     CodeGenOpts.setDebugInfo(codegenoptions::FullDebugInfo);
+    CodeGenOpts.setDebuggerTuning(CI.getCodeGenOpts().getDebuggerTuning());
   }
 
   ~PCHContainerGenerator() override = default;

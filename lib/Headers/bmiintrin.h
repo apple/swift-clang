@@ -75,7 +75,7 @@
 ///
 /// This intrinsic corresponds to the \c BLSI instruction.
 ///
-/// \parama a
+/// \param a
 ///    An unsigned integer whose bits are to be cleared.
 /// \returns An unsigned integer containing the result of clearing the bits from
 ///    the source operand.
@@ -283,6 +283,22 @@ __blsr_u32(unsigned int __X)
 ///    bits in the operand.
 static __inline__ unsigned int __RELAXED_FN_ATTRS
 __tzcnt_u32(unsigned int __X)
+{
+  return __X ? __builtin_ctz(__X) : 32;
+}
+
+/// \brief Counts the number of trailing zero bits in the operand.
+///
+/// \headerfile <x86intrin.h>
+///
+/// This intrinsic corresponds to the \c TZCNT instruction.
+///
+/// \param __X
+///    An unsigned 32-bit integer whose trailing zeros are to be counted.
+/// \returns An 32-bit integer containing the number of trailing zero
+///    bits in the operand.
+static __inline__ int __RELAXED_FN_ATTRS
+_mm_tzcnt_32(unsigned int __X)
 {
   return __X ? __builtin_ctz(__X) : 32;
 }
@@ -504,6 +520,22 @@ __blsr_u64(unsigned long long __X)
 ///    bits in the operand.
 static __inline__ unsigned long long __RELAXED_FN_ATTRS
 __tzcnt_u64(unsigned long long __X)
+{
+  return __X ? __builtin_ctzll(__X) : 64;
+}
+
+/// \brief Counts the number of trailing zero bits in the operand.
+///
+/// \headerfile <x86intrin.h>
+///
+/// This intrinsic corresponds to the \c TZCNT instruction.
+///
+/// \param __X
+///    An unsigned 64-bit integer whose trailing zeros are to be counted.
+/// \returns An 64-bit integer containing the number of trailing zero
+///    bits in the operand.
+static __inline__ long long __RELAXED_FN_ATTRS
+_mm_tzcnt_64(unsigned long long __X)
 {
   return __X ? __builtin_ctzll(__X) : 64;
 }

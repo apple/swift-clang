@@ -169,6 +169,11 @@ namespace {
   }
 }
 
+template <typename Attr>
+static specific_attr_iterator<Attr> getAttrIterator(Decl *decl) {
+  return decl->specific_attr_begin<Attr>();
+}
+
 static void ProcessAPINotes(Sema &S, Decl *D,
                             const api_notes::CommonEntityInfo &info,
                             VersionedInfoRole role) {
@@ -179,7 +184,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
         return UnavailableAttr::CreateImplicit(S.Context,
                                                CopyString(S.Context,
                                                           info.UnavailableMsg));
-    }, [](Decl *decl) { return decl->specific_attr_begin<UnavailableAttr>(); });
+    }, getAttrIterator<UnavailableAttr>);
   }
 
   if (info.UnavailableInSwift) {
@@ -215,7 +220,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
   if (auto swiftPrivate = info.isSwiftPrivate()) {
     handleAPINotedAttribute<SwiftPrivateAttr>(S, D, *swiftPrivate, role, [&] {
       return SwiftPrivateAttr::CreateImplicit(S.Context);
-    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftPrivateAttr>(); });
+    }, getAttrIterator<SwiftPrivateAttr>);
   }
 
   // swift_name
@@ -232,7 +237,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
       return SwiftNameAttr::CreateImplicit(S.Context,
                                            CopyString(S.Context,
                                                       info.SwiftName));
-    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftNameAttr>(); });
+    }, getAttrIterator<SwiftNameAttr>);
   }
 }
 
@@ -246,7 +251,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
       return SwiftBridgeAttr::CreateImplicit(S.Context,
                                              CopyString(S.Context,
                                                         *swiftBridge));
-    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftBridgeAttr>(); });
+    }, getAttrIterator<SwiftBridgeAttr>);
   }
 
   // ns_error_domain
@@ -256,7 +261,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
       return NSErrorDomainAttr::CreateImplicit(
                S.Context,
                &S.Context.Idents.get(*nsErrorDomain));
-    }, [](Decl *decl) { return decl->specific_attr_begin<NSErrorDomainAttr>(); });
+    }, getAttrIterator<NSErrorDomainAttr>);
   }
 
   ProcessAPINotes(S, D, static_cast<const api_notes::CommonEntityInfo &>(info),
@@ -337,7 +342,7 @@ static void ProcessAPINotes(Sema &S, ParmVarDecl *D,
   if (auto noescape = info.isNoEscape()) {
     handleAPINotedAttribute<NoEscapeAttr>(S, D, *noescape, role, [&] {
       return NoEscapeAttr::CreateImplicit(S.Context);
-    }, [](Decl *decl) { return decl->specific_attr_begin<NoEscapeAttr>(); });
+    }, getAttrIterator<NoEscapeAttr>);
   }
 
   // Handle common entity information.
@@ -366,7 +371,7 @@ static void ProcessAPINotes(Sema &S, ObjCPropertyDecl *D,
                                                                 *asAccessors,
                                                                 role, [&] {
       return SwiftImportPropertyAsAccessorsAttr::CreateImplicit(S.Context);
-    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftImportPropertyAsAccessorsAttr>(); });
+    }, getAttrIterator<SwiftImportPropertyAsAccessorsAttr>);
   }
 }
 
@@ -507,7 +512,7 @@ static void ProcessAPINotes(Sema &S, ObjCMethodDecl *D,
         IFace->setHasDesignatedInitializers();
       }
       return ObjCDesignatedInitializerAttr::CreateImplicit(S.Context);
-    }, [](Decl *decl) { return decl->specific_attr_begin<ObjCDesignatedInitializerAttr>(); });
+    }, getAttrIterator<ObjCDesignatedInitializerAttr>);
   }
 
   // FIXME: This doesn't work well with versioned API notes.
@@ -560,7 +565,7 @@ static void ProcessAPINotes(Sema &S, TypedefNameDecl *D,
                  S.Context,
                  SwiftNewtypeAttr::GNU_swift_wrapper,
                  kind);
-    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftNewtypeAttr>(); });
+    }, getAttrIterator<SwiftNewtypeAttr>);
   }
 
   // Handle common type information.

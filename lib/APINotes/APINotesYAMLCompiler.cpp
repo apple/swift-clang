@@ -164,7 +164,15 @@ namespace {
     AvailabilityItem() : Mode(APIAvailability::Available), Msg("") {}
   };
 
-  static llvm::Optional<NullabilityKind> AbsentNullability = llvm::None;
+  // There is a bug in MSVC that causes an internal compiler error in compilation.
+  // See: https://connect.microsoft.com/VisualStudio/feedback/details/3111599/
+  // This is a workaround that issue until the problem gets fixed.
+#if defined(_MSC_VER)
+  static llvm::Optional<NullabilityKind> AbsentNullability = llvm::NoneType::None;
+#else
+  static llvm::Optional<NullabilityKind> AbsentNullability = None;
+#endif
+
   static llvm::Optional<NullabilityKind> DefaultNullability =
     NullabilityKind::NonNull;
   typedef std::vector<clang::NullabilityKind> NullabilitySeq;

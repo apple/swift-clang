@@ -131,8 +131,7 @@ namespace {
          Sema &S, Decl *D, bool shouldAddAttribute,
          VersionedInfoRole role,
          llvm::function_ref<A *()> createAttr,
-         llvm::function_ref<specific_attr_iterator<A>(Decl *)> getExistingAttr =
-           [](Decl *decl) { return decl->specific_attr_begin<A>(); }) {
+         llvm::function_ref<specific_attr_iterator<A>(Decl *)> getExistingAttr) {
     switch (role) {
     case VersionedInfoRole::AugmentSource:
       // If we're not adding an attribute, there's nothing to do.
@@ -180,7 +179,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
         return UnavailableAttr::CreateImplicit(S.Context,
                                                CopyString(S.Context,
                                                           info.UnavailableMsg));
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<UnavailableAttr>(); });
   }
 
   if (info.UnavailableInSwift) {
@@ -216,7 +215,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
   if (auto swiftPrivate = info.isSwiftPrivate()) {
     handleAPINotedAttribute<SwiftPrivateAttr>(S, D, *swiftPrivate, role, [&] {
       return SwiftPrivateAttr::CreateImplicit(S.Context);
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftPrivateAttr>(); });
   }
 
   // swift_name
@@ -233,7 +232,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
       return SwiftNameAttr::CreateImplicit(S.Context,
                                            CopyString(S.Context,
                                                       info.SwiftName));
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftNameAttr>(); });
   }
 }
 
@@ -247,7 +246,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
       return SwiftBridgeAttr::CreateImplicit(S.Context,
                                              CopyString(S.Context,
                                                         *swiftBridge));
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftBridgeAttr>(); });
   }
 
   // ns_error_domain
@@ -257,7 +256,7 @@ static void ProcessAPINotes(Sema &S, Decl *D,
       return NSErrorDomainAttr::CreateImplicit(
                S.Context,
                &S.Context.Idents.get(*nsErrorDomain));
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<NSErrorDomainAttr>(); });
   }
 
   ProcessAPINotes(S, D, static_cast<const api_notes::CommonEntityInfo &>(info),
@@ -338,7 +337,7 @@ static void ProcessAPINotes(Sema &S, ParmVarDecl *D,
   if (auto noescape = info.isNoEscape()) {
     handleAPINotedAttribute<NoEscapeAttr>(S, D, *noescape, role, [&] {
       return NoEscapeAttr::CreateImplicit(S.Context);
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<NoEscapeAttr>(); });
   }
 
   // Handle common entity information.
@@ -367,7 +366,7 @@ static void ProcessAPINotes(Sema &S, ObjCPropertyDecl *D,
                                                                 *asAccessors,
                                                                 role, [&] {
       return SwiftImportPropertyAsAccessorsAttr::CreateImplicit(S.Context);
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftImportPropertyAsAccessorsAttr>(); });
   }
 }
 
@@ -508,7 +507,7 @@ static void ProcessAPINotes(Sema &S, ObjCMethodDecl *D,
         IFace->setHasDesignatedInitializers();
       }
       return ObjCDesignatedInitializerAttr::CreateImplicit(S.Context);
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<ObjCDesignatedInitializerAttr>(); });
   }
 
   // FIXME: This doesn't work well with versioned API notes.
@@ -561,7 +560,7 @@ static void ProcessAPINotes(Sema &S, TypedefNameDecl *D,
                  S.Context,
                  SwiftNewtypeAttr::GNU_swift_wrapper,
                  kind);
-    });
+    }, [](Decl *decl) { return decl->specific_attr_begin<SwiftNewtypeAttr>(); });
   }
 
   // Handle common type information.

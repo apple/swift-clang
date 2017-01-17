@@ -3827,6 +3827,12 @@ void Parser::ParseStructUnionBody(SourceLocation RecordLoc,
   Actions.ActOnTagFinishDefinition(getCurScope(), TagDecl, T.getRange());
 }
 
+static bool hasModuleFeature(StringRef Feature, const LangOptions &LangOpts) {
+    return std::find(LangOpts.ModuleFeatures.begin(),
+                     LangOpts.ModuleFeatures.end(),
+                     Feature) != LangOpts.ModuleFeatures.end();
+}
+
 /// ParseEnumSpecifier
 ///       enum-specifier: [C99 6.7.2.2]
 ///         'enum' identifier[opt] '{' enumerator-list '}'
@@ -3909,7 +3915,7 @@ void Parser::ParseEnumSpecifier(SourceLocation StartLoc, DeclSpec &DS,
 
   bool AllowFixedUnderlyingType = AllowDeclaration &&
     (getLangOpts().CPlusPlus11 || getLangOpts().MicrosoftExt ||
-     getLangOpts().ObjC2);
+     getLangOpts().ObjC2 || hasModuleFeature("swift", getLangOpts()));
 
   CXXScopeSpec &SS = DS.getTypeSpecScope();
   if (getLangOpts().CPlusPlus) {

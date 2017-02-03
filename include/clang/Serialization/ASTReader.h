@@ -1161,7 +1161,7 @@ private:
                             SourceLocation ImportLoc, ModuleFile *ImportedBy,
                             SmallVectorImpl<ImportedModule> &Loaded,
                             off_t ExpectedSize, time_t ExpectedModTime,
-                            ASTFileSignature ExpectedSignature,
+                            serialization::ASTFileSignature ExpectedSignature,
                             unsigned ClientLoadCapabilities);
   ASTReadResult ReadControlBlock(ModuleFile &F,
                                  SmallVectorImpl<ImportedModule> &Loaded,
@@ -1170,11 +1170,7 @@ private:
   static ASTReadResult ReadOptionsBlock(
       llvm::BitstreamCursor &Stream, unsigned ClientLoadCapabilities,
       bool AllowCompatibleConfigurationMismatch, ASTReaderListener &Listener,
-      std::string &SuggestedPredefines);
-  static ASTReadResult ReadDiagnosticOptionsBlock(ModuleFile *F,
-      llvm::BitstreamCursor &Stream, unsigned ClientLoadCapabilities,
-      bool AllowCompatibleConfigurationMismatch, ASTReaderListener &Listener,
-      bool ValidateDiagnosticOptions);
+      std::string &SuggestedPredefines, bool ValidateDiagnosticOptions);
   ASTReadResult ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities);
   ASTReadResult ReadExtensionBlock(ModuleFile &F);
   bool ParseLineTable(ModuleFile &F, const RecordData &Record);

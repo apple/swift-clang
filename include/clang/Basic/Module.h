@@ -43,7 +43,6 @@ class IdentifierInfo;
 /// \brief Describes the name of a module.
 typedef SmallVector<std::pair<std::string, SourceLocation>, 2> ModuleId;
   
-typedef std::array<uint32_t, 5> ASTFileSignature;
 /// \brief Describes a module or submodule.
 class Module {
 public:
@@ -66,7 +65,7 @@ public:
   llvm::PointerUnion<const DirectoryEntry *, const FileEntry *> Umbrella;
 
   /// \brief The module signature.
-  ASTFileSignature Signature;
+  uint64_t Signature;
 
   /// \brief The name of the umbrella entry, as written in the module map.
   std::string UmbrellaAsWritten;

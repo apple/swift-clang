@@ -29,6 +29,11 @@
 // CHECK:     CPU:
 // CHECK:     ABI:
 
+// CHECK: Diagnostic options:
+// CHECK:   IgnoreWarnings: Yes
+// CHECK:   Diagnostic flags:
+// CHECK:     -Wunused
+
 // CHECK: Header search options:
 // CHECK:   System root [-isysroot=]: '/'
 // CHECK:   Use builtin include directories [-nobuiltininc]: Yes
@@ -42,8 +47,3 @@
 // CHECK:   Predefined macros:
 // CHECK:     -DBLARG
 // CHECK:     -DWIBBLE=WOBBLE
-
-// CHECK: Diagnostic options:
-// CHECK:   IgnoreWarnings: Yes
-// CHECK:   Diagnostic flags:
-// CHECK:     -Wunused

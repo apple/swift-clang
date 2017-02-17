@@ -706,6 +706,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
                 CI.getLangOpts(), CI.getTargetOpts(), CI.getPreprocessorOpts(),
                 SpecificModuleCachePath)) {
           PPOpts.ImplicitPCHInclude = Dir->path();
+          CI.getLangOpts().NeededByPCHOrCompilationUsesPCH = true;
           Found = true;
           break;
         }

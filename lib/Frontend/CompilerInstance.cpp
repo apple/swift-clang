@@ -1039,7 +1039,7 @@ static bool compileModuleImpl(CompilerInstance &ImportingInstance,
 
   // Remove any macro definitions that are explicitly ignored by the module.
   // They aren't supposed to affect how the module is built anyway.
-  HeaderSearchOptions &HSOpts = Invocation->getHeaderSearchOpts();
+  const HeaderSearchOptions &HSOpts = Invocation->getHeaderSearchOpts();
   PPOpts.Macros.erase(
       std::remove_if(PPOpts.Macros.begin(), PPOpts.Macros.end(),
                      [&HSOpts](const std::pair<std::string, bool> &def) {
@@ -1068,8 +1068,6 @@ static bool compileModuleImpl(CompilerInstance &ImportingInstance,
   FrontendOpts.DisableFree = false;
   FrontendOpts.GenerateGlobalModuleIndex = false;
   FrontendOpts.BuildingImplicitModule = true;
-  // Force implicitly-built modules to hash the content of the module file.
-  HSOpts.ModulesHashContent = true;
   FrontendOpts.Inputs.clear();
   InputKind IK = getSourceInputKindFromOptions(*Invocation->getLangOpts());
 
@@ -1094,9 +1092,7 @@ static bool compileModuleImpl(CompilerInstance &ImportingInstance,
 
   // Note that this module is part of the module build stack, so that we
   // can detect cycles in the module graph.
-  // PCMCache is part of the FileManager, so it is shared among threads.
   Instance.setFileManager(&ImportingInstance.getFileManager());
-  ImportingInstance.getFileManager().getPCMCache()->StartCompilation();
   Instance.createSourceManager(Instance.getFileManager());
   SourceManager &SourceMgr = Instance.getSourceManager();
   SourceMgr.setModuleBuildStack(
@@ -1164,7 +1160,6 @@ static bool compileModuleImpl(CompilerInstance &ImportingInstance,
     ImportingInstance.setBuildGlobalModuleIndex(true);
   }
 
-  ImportingInstance.getFileManager().getPCMCache()->EndCompilation();
   return !Instance.getDiagnostics().hasErrorOccurred();
 }
 
@@ -1189,14 +1184,10 @@ static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
     llvm::LockFileManager Locked(ModuleFileName);
     switch (Locked) {
     case llvm::LockFileManager::LFS_Error:
-      // PCMCache takes care of correctness and locks are only necessary for
-      // performance. If there are errors creating the lock, do not use it
-      // and fallback to building the module ourselves.
-      Diags.Report(ModuleNameLoc, diag::remark_module_lock_failure)
+      Diags.Report(ModuleNameLoc, diag::err_module_lock_failure)
           << Module->Name << Locked.getErrorMessage();
-      // Clear the lock file in case there's some leftover around.
-      Locked.unsafeRemoveLockFile();
-      // FALLTHROUGH
+      return false;
+
     case llvm::LockFileManager::LFS_Owned:
       // We're responsible for building the module ourselves.
       if (!compileModuleImpl(ImportingInstance, ModuleNameLoc, Module,
@@ -1216,14 +1207,11 @@ static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
       case llvm::LockFileManager::Res_OwnerDied:
         continue; // try again to get the lock.
       case llvm::LockFileManager::Res_Timeout:
-        // Since PCMCache takes care of correctness, we try waiting for another
-        // process to complete the build so that this isn't done twice. If we
-        // reach a timeout, it's not a problem, try to build it ourselves then.
-        Diags.Report(ModuleNameLoc, diag::remark_module_lock_timeout)
+        Diags.Report(ModuleNameLoc, diag::err_module_lock_timeout)
             << Module->Name;
         // Clear the lock file so that future invokations can make progress.
         Locked.unsafeRemoveLockFile();
-        continue;
+        return false;
       }
       break;
     }

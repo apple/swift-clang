@@ -405,9 +405,6 @@ private:
   /// \brief The module manager which manages modules and their dependencies
   ModuleManager ModuleMgr;
 
-  /// \brief The PCM manager which manages memory buffers for pcm files.
-  PCMCache *BufferMgr;
-
   /// \brief A dummy identifier resolver used to merge TU-scope declarations in
   /// C, for the cases where we don't have a Sema object to provide a real
   /// identifier resolver.
@@ -1164,26 +1161,16 @@ private:
                             SourceLocation ImportLoc, ModuleFile *ImportedBy,
                             SmallVectorImpl<ImportedModule> &Loaded,
                             off_t ExpectedSize, time_t ExpectedModTime,
-                            ASTFileSignature ExpectedSignature,
+                            serialization::ASTFileSignature ExpectedSignature,
                             unsigned ClientLoadCapabilities);
   ASTReadResult ReadControlBlock(ModuleFile &F,
                                  SmallVectorImpl<ImportedModule> &Loaded,
                                  const ModuleFile *ImportedBy,
-                                 unsigned ClientLoadCapabilities,
-                                 ASTFileSignature ExpectedSignature);
-  ASTReadResult
-  findAndReadUnhashedControlBlock(ModuleFile &F, const ModuleFile *ImportedBy,
-                                  ASTFileSignature ExpectedSignature,
-                                  unsigned ClientLoadCapabilities);
+                                 unsigned ClientLoadCapabilities);
   static ASTReadResult ReadOptionsBlock(
       llvm::BitstreamCursor &Stream, unsigned ClientLoadCapabilities,
       bool AllowCompatibleConfigurationMismatch, ASTReaderListener &Listener,
-      std::string &SuggestedPredefines);
-  static ASTReadResult ReadDiagnosticOptionsBlock(
-      ModuleFile *F, llvm::BitstreamCursor &Stream,
-      unsigned ClientLoadCapabilities, ASTFileSignature ExpectedSignature,
-      bool AllowCompatibleConfigurationMismatch, ASTReaderListener *Listener,
-      bool ValidateDiagnosticOptions);
+      std::string &SuggestedPredefines, bool ValidateDiagnosticOptions);
   ASTReadResult ReadASTBlock(ModuleFile &F, unsigned ClientLoadCapabilities);
   ASTReadResult ReadExtensionBlock(ModuleFile &F);
   bool ParseLineTable(ModuleFile &F, const RecordData &Record);

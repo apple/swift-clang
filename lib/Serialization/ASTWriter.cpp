@@ -56,7 +56,6 @@
 #include "llvm/Support/OnDiskHashTable.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
-#include "llvm/Support/SHA1.h"
 #include <algorithm>
 #include <cstdio>
 #include <string.h>
@@ -929,6 +928,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   // Control Block.
   BLOCK(CONTROL_BLOCK);
   RECORD(METADATA);
+  RECORD(SIGNATURE);
   RECORD(MODULE_NAME);
   RECORD(MODULE_DIRECTORY);
   RECORD(MODULE_MAP_FILE);
@@ -941,6 +941,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   BLOCK(OPTIONS_BLOCK);
   RECORD(LANGUAGE_OPTIONS);
   RECORD(TARGET_OPTIONS);
+  RECORD(DIAGNOSTIC_OPTIONS);
   RECORD(FILE_SYSTEM_OPTIONS);
   RECORD(HEADER_SEARCH_OPTIONS);
   RECORD(PREPROCESSOR_OPTIONS);
@@ -1165,10 +1166,6 @@ void ASTWriter::WriteBlockInfoBlock() {
   BLOCK(EXTENSION_BLOCK);
   RECORD(EXTENSION_METADATA);
 
-  BLOCK(UNHASHED_CONTROL_BLOCK);
-  RECORD(DIAGNOSTIC_OPTIONS);
-  RECORD(SIGNATURE);
-
 #undef RECORD
 #undef BLOCK
   Stream.ExitBlock();
@@ -1231,71 +1228,21 @@ adjustFilenameForRelocatableAST(const char *Filename, StringRef BaseDir) {
   return Filename + Pos;
 }
 
-ASTFileSignature ASTWriter::WriteHash(size_t BlockStartPos) {
-  // Calculate the hash till start of UNHASHED_CONTROL_BLOCK.
-  llvm::SHA1 Hasher;
-  Hasher.update(ArrayRef<uint8_t>((const uint8_t *)&(Buffer)[BlockStartPos],
-                                  (StartOfUnhashedControl>>3) - BlockStartPos));
-  auto Hash = Hasher.result();
-
-  SmallVector<uint64_t, 20> Vals;
-  auto LShift = [&](unsigned char Val, unsigned Amount)
-                    -> uint64_t { return ((uint64_t)Val) << Amount; };
-  for (int Pos = 0; Pos < 20; Pos += 4) {
-    uint32_t SubHash = LShift(Hash[Pos + 0], 24);
-    SubHash |= LShift(Hash[Pos + 1], 16) | LShift(Hash[Pos + 2], 8) |
-               (unsigned)(unsigned char)Hash[Pos + 3];
-    Vals.push_back(SubHash);
+static ASTFileSignature getSignature() {
+  while (1) {
+    if (ASTFileSignature S = llvm::sys::Process::GetRandomNumber())
+      return S;
+    // Rely on GetRandomNumber to eventually return non-zero...
   }
-
-  // Emit the finished record. SIGNATURE: [5*i32]
-  Stream.EmitRecord(SIGNATURE, Vals);
-  return {{(uint32_t)Vals[0], (uint32_t)Vals[1], (uint32_t)Vals[2],
-           (uint32_t)Vals[3], (uint32_t)Vals[4]}};
-}
-
-ASTFileSignature ASTWriter::WriteUnhashedControlBlock(Preprocessor &PP,
-                                                      ASTContext &Context) {
-  StartOfUnhashedControl = Stream.GetCurrentBitNo();
-  // Write the unhashed control block.
-  Stream.EnterSubblock(UNHASHED_CONTROL_BLOCK_ID, 5);
-
-  // Diagnostic options.
-  RecordData Record;
-  const DiagnosticOptions &DiagOpts
-    = Context.getDiagnostics().getDiagnosticOptions();
-#define DIAGOPT(Name, Bits, Default) Record.push_back(DiagOpts.Name);
-#define ENUM_DIAGOPT(Name, Type, Bits, Default) \
-  Record.push_back(static_cast<unsigned>(DiagOpts.get##Name()));
-#include "clang/Basic/DiagnosticOptions.def"
-  Record.push_back(DiagOpts.Warnings.size());
-  for (unsigned I = 0, N = DiagOpts.Warnings.size(); I != N; ++I)
-    AddString(DiagOpts.Warnings[I], Record);
-  Record.push_back(DiagOpts.Remarks.size());
-  for (unsigned I = 0, N = DiagOpts.Remarks.size(); I != N; ++I)
-    AddString(DiagOpts.Remarks[I], Record);
-  // Note: we don't serialize the log or serialization file names, because they
-  // are generally transient files and will almost always be overridden.
-  Stream.EmitRecord(DIAGNOSTIC_OPTIONS, Record);
-
-  // For implicit modules we output a signature that is the hash of the pcm
-  // content.
-  ASTFileSignature RetCode{{0}};
-  const HeaderSearchOptions &HSOpts
-    = PP.getHeaderSearchInfo().getHeaderSearchOpts();
-  if (WritingModule && HSOpts.ModulesHashContent)
-    RetCode = WriteHash(0);
-
-  // Leave the options block.
-  Stream.ExitBlock();
-  return RetCode;
 }
 
 /// \brief Write the control block.
-void ASTWriter::WriteControlBlock(Preprocessor &PP,
-                                  ASTContext &Context,
-                                  StringRef isysroot,
-                                  const std::string &OutputFile) {
+uint64_t ASTWriter::WriteControlBlock(Preprocessor &PP,
+                                      ASTContext &Context,
+                                      StringRef isysroot,
+                                      const std::string &OutputFile) {
+  ASTFileSignature Signature = 0;
+
   using namespace llvm;
   Stream.EnterSubblock(CONTROL_BLOCK_ID, 5);
   RecordData Record;
@@ -1323,6 +1270,15 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP,
                               getClangFullRepositoryVersion());
   }
   if (WritingModule) {
+    // For implicit modules we output a signature that we can use to ensure
+    // duplicate module builds don't collide in the cache as their output order
+    // is non-deterministic.
+    // FIXME: Remove this when output is deterministic.
+    if (Context.getLangOpts().ImplicitModules) {
+      Signature = getSignature();
+      RecordData::value_type Record[] = {Signature};
+      Stream.EmitRecord(SIGNATURE, Record);
+    }
 
     // Module name
     auto *Abbrev = new BitCodeAbbrev();
@@ -1395,18 +1351,9 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP,
 
       Record.push_back((unsigned)M->Kind); // FIXME: Stable encoding
       AddSourceLocation(M->ImportLoc, Record);
-
-      // If we have calculated signature, there is no need to store
-      // the size or timestamp.
-      bool HasSignature = M->Signature != ASTFileSignature({{0}});
-      Record.push_back(HasSignature ? 0 : M->File->getSize());
-      Record.push_back(HasSignature ? 0 : getTimestampForOutput(M->File));
-
-      Record.push_back(M->Signature[0]);
-      Record.push_back(M->Signature[1]);
-      Record.push_back(M->Signature[2]);
-      Record.push_back(M->Signature[3]);
-      Record.push_back(M->Signature[4]);
+      Record.push_back(M->File->getSize());
+      Record.push_back(getTimestampForOutput(M->File));
+      Record.push_back(M->Signature);
       AddPath(M->FileName, Record);
     }
     Stream.EmitRecord(IMPORTS, Record);
@@ -1468,6 +1415,24 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP,
     AddString(TargetOpts.Features[I], Record);
   }
   Stream.EmitRecord(TARGET_OPTIONS, Record);
+
+  // Diagnostic options.
+  Record.clear();
+  const DiagnosticOptions &DiagOpts
+    = Context.getDiagnostics().getDiagnosticOptions();
+#define DIAGOPT(Name, Bits, Default) Record.push_back(DiagOpts.Name);
+#define ENUM_DIAGOPT(Name, Type, Bits, Default) \
+  Record.push_back(static_cast<unsigned>(DiagOpts.get##Name()));
+#include "clang/Basic/DiagnosticOptions.def"
+  Record.push_back(DiagOpts.Warnings.size());
+  for (unsigned I = 0, N = DiagOpts.Warnings.size(); I != N; ++I)
+    AddString(DiagOpts.Warnings[I], Record);
+  Record.push_back(DiagOpts.Remarks.size());
+  for (unsigned I = 0, N = DiagOpts.Remarks.size(); I != N; ++I)
+    AddString(DiagOpts.Remarks[I], Record);
+  // Note: we don't serialize the log or serialization file names, because they
+  // are generally transient files and will almost always be overridden.
+  Stream.EmitRecord(DIAGNOSTIC_OPTIONS, Record);
 
   // File system options.
   Record.clear();
@@ -1582,6 +1547,7 @@ void ASTWriter::WriteControlBlock(Preprocessor &PP,
                   PP.getHeaderSearchInfo().getHeaderSearchOpts(),
                   PP.getLangOpts().Modules);
   Stream.ExitBlock();
+  return Signature;
 }
 
 namespace  {
@@ -4127,12 +4093,10 @@ void ASTWriter::SetSelectorOffset(Selector Sel, uint32_t Offset) {
 }
 
 ASTWriter::ASTWriter(
-  llvm::BitstreamWriter &Stream, SmallVectorImpl<char> &Buffer,
-  PCMCache *BufferMgr,
+  llvm::BitstreamWriter &Stream,
   ArrayRef<llvm::IntrusiveRefCntPtr<ModuleFileExtension>> Extensions,
   bool IncludeTimestamps)
-    : Stream(Stream), Buffer(Buffer), BufferMgr(BufferMgr),
-      Context(nullptr), PP(nullptr), Chain(nullptr),
+    : Stream(Stream), Context(nullptr), PP(nullptr), Chain(nullptr),
       WritingModule(nullptr), IncludeTimestamps(IncludeTimestamps),
       WritingAST(false), DoneWritingDeclsAndTypes(false),
       ASTHasCompilerErrors(false), FirstDeclID(NUM_PREDEF_DECL_IDS),
@@ -4170,7 +4134,7 @@ time_t ASTWriter::getTimestampForOutput(const FileEntry *E) const {
   return IncludeTimestamps ? E->getModificationTime() : 0;
 }
 
-ASTFileSignature ASTWriter::WriteAST(Sema &SemaRef, const std::string &OutputFile,
+uint64_t ASTWriter::WriteAST(Sema &SemaRef, const std::string &OutputFile,
                              Module *WritingModule, StringRef isysroot,
                              bool hasErrors) {
   WritingAST = true;
@@ -4196,16 +4160,6 @@ ASTFileSignature ASTWriter::WriteAST(Sema &SemaRef, const std::string &OutputFil
   this->BaseDirectory.clear();
 
   WritingAST = false;
-  if (BufferMgr && SemaRef.Context.getLangOpts().ImplicitModules &&
-      WritingModule) {
-    // Construct MemoryBuffer and update buffer manager.
-    std::unique_ptr<llvm::MemoryBuffer> write_buffer =
-        llvm::MemoryBuffer::getMemBufferCopy(
-            StringRef(Buffer.begin(), Buffer.size()));
-    BufferMgr->addConsistentBuffer(OutputFile, std::move(write_buffer));
-    BufferMgr->setIsSystem(OutputFile,
-                           WritingModule ? WritingModule->IsSystem : false);
-  }
   return Signature;
 }
 
@@ -4218,7 +4172,7 @@ static void AddLazyVectorDecls(ASTWriter &Writer, Vector &Vec,
   }
 }
 
-ASTFileSignature ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
+uint64_t ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
                                  const std::string &OutputFile,
                                  Module *WritingModule) {
   using namespace llvm;
@@ -4367,7 +4321,7 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
   }
 
   // Write the control block
-  WriteControlBlock(PP, Context, isysroot, OutputFile);
+  uint64_t Signature = WriteControlBlock(PP, Context, isysroot, OutputFile);
 
   // Write the remaining AST contents.
   Stream.EnterSubblock(AST_BLOCK_ID, 5);
@@ -4706,8 +4660,6 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema &SemaRef, StringRef isysroot,
   // Write the module file extension blocks.
   for (const auto &ExtWriter : ModuleFileExtensionWriters)
     WriteModuleFileExtension(SemaRef, *ExtWriter);
-
-  ASTFileSignature Signature = WriteUnhashedControlBlock(PP, Context);
 
   return Signature;
 }

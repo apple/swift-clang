@@ -1947,7 +1947,7 @@ void Clang::AddSystemZTargetArgs(const ArgList &Args,
 static const char *getSystemZTargetCPU(const ArgList &Args) {
   if (const Arg *A = Args.getLastArg(options::OPT_march_EQ))
     return A->getValue();
-  return "z10";
+  return "z196";
 }
 
 static void getSystemZTargetFeatures(const ArgList &Args,

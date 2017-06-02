@@ -7046,7 +7046,7 @@ class SystemZTargetInfo : public TargetInfo {
 
 public:
   SystemZTargetInfo(const llvm::Triple &Triple, const TargetOptions &)
-      : TargetInfo(Triple), CPU("z10"), HasTransactionalExecution(false),
+      : TargetInfo(Triple), CPU("z196"), HasTransactionalExecution(false),
         HasVector(false) {
     IntMaxType = SignedLong;
     Int64Type = SignedLong;

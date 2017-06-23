@@ -261,6 +261,9 @@ public:
     IsDisabled = true;
   }
 
+  // FIXME: hack to get past build failures
+  bool isFromASTFile() const { return false; }
+
   /// \brief Determine whether this macro was used for a header guard.
   bool isUsedForHeaderGuard() const { return UsedForHeaderGuard; }
 

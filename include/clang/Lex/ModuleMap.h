@@ -583,6 +583,9 @@ public:
   /// false otherwise.
   bool resolveConflicts(Module *Mod, bool Complain);
 
+  // FIXME: hack to get past build failures
+  Module *inferModuleFromLocation(FullSourceLoc Loc) { return nullptr; }
+
   /// \brief Sets the umbrella header of the given module to the given
   /// header.
   void setUmbrellaHeader(Module *Mod, const FileEntry *UmbrellaHeader,

@@ -188,7 +188,7 @@ public:
     // with them by itself.
     for (const auto &Ref : Refs)
       Results.push_back(indexer::Indexed<const T *>(
-          dyn_cast_or_null<T>(lookupDecl(Ref.Decl.USR)), Ref.BoolResult));
+          dyn_cast_or_null<T>(lookupDecl(Ref.Decl.USR)), Ref.IsNotDefined));
     return Results;
   }
 

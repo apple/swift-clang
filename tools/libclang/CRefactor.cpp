@@ -1885,8 +1885,7 @@ clang_IndexerQuery_consumeIntResult(CXIndexerQuery Query, unsigned CursorIndex,
   if (Wrapper->DeclResults.empty())
     Wrapper->DeclResults.resize(DQ->getInputs().size(),
                                 indexer::Indexed<PersistentDeclRef<Decl>>(
-                                    PersistentDeclRef<Decl>::create(nullptr),
-                                    indexer::QueryBoolResult::Unknown));
+                                    PersistentDeclRef<Decl>::create(nullptr)));
   // Filter the declarations!
   bool IsNot = false;
   if (isa<indexer::detail::DeclPredicateNotPredicate>(DQ->getPredicateNode()))

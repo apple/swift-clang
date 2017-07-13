@@ -427,7 +427,7 @@ ImplementDeclaredObjCMethodsOperation::runInImplementationAST(
   llvm::raw_string_ostream OS(MethodString);
 
   assert(MethodDeclarations.size() >= SelectedMethods.size() &&
-         "less declarations than selected methods?");
+         "fewer declarations than selected methods?");
   for (const auto &I : llvm::enumerate(SelectedMethods)) {
     indexer::Indexed<const ObjCMethodDecl *> Decl = I.value();
     // Skip methods that are already defined.

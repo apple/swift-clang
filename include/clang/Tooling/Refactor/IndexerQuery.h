@@ -187,14 +187,14 @@ enum class QueryBoolResult {
   No,
 };
 
-// FIXME: Either PersistentDeclRef or Decl *
+// FIXME: Check that 'T' is either a PersistentDeclRef<> or a Decl *.
 template <typename T> struct Indexed {
   T Decl;
   // FIXME: Generalize better in the new refactoring engine.
-  QueryBoolResult BoolResult = QueryBoolResult::Unknown;
+  QueryBoolResult IsNotDefined;
 
-  Indexed(T Decl, QueryBoolResult BoolResult = QueryBoolResult::Unknown)
-      : Decl(Decl), BoolResult(BoolResult) {}
+  Indexed(T Decl, QueryBoolResult IsNotDefined = QueryBoolResult::Unknown)
+      : Decl(Decl), IsNotDefined(IsNotDefined) {}
 
   Indexed(Indexed<T> &&Other) = default;
   Indexed &operator=(Indexed<T> &&Other) = default;
@@ -204,7 +204,7 @@ template <typename T> struct Indexed {
   /// True iff the declaration is not defined in the entire project.
   bool isNotDefined() const {
     // FIXME: This is hack. Need a better system in the new engine.
-    return BoolResult == QueryBoolResult::Yes;
+    return IsNotDefined == QueryBoolResult::Yes;
   }
 };
 
@@ -269,7 +269,7 @@ public:
     std::vector<Indexed<PersistentDeclRef<T>>> Results;
     for (const auto &Ref : DeclarationsQuery::Output)
       Results.push_back(Indexed<PersistentDeclRef<T>>(
-          PersistentDeclRef<T>(Ref.Decl.USR), Ref.BoolResult));
+          PersistentDeclRef<T>(Ref.Decl.USR), Ref.IsNotDefined));
     return Results;
   }
 };

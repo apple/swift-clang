@@ -38,7 +38,7 @@ public:
   struct Event {
     EventKind Kind;
     std::string Filename;
-    timespec ModTime;
+    time_t ModTime;
   };
 
   typedef std::function<void(ArrayRef<Event> Events, bool isInitial)> EventReceiver;
@@ -71,7 +71,7 @@ public:
   struct UnitEvent {
     UnitEventKind Kind;
     StringRef UnitName;
-    timespec ModTime;
+    time_t ModTime;
   };
   struct UnitEventNotification {
     bool IsInitial;

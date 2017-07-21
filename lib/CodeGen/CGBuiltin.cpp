@@ -482,6 +482,7 @@ enum class CodeGenFunction::MSVCIntrin {
   _InterlockedIncrement,
   _InterlockedOr,
   _InterlockedXor,
+  _interlockedbittestandset,
 };
 
 Value *CodeGenFunction::EmitMSVCBuiltinExpr(MSVCIntrin BuiltinID,
@@ -547,6 +548,22 @@ Value *CodeGenFunction::EmitMSVCBuiltinExpr(MSVCIntrin BuiltinID,
     return MakeBinaryAtomicValue(*this, AtomicRMWInst::Or, E);
   case MSVCIntrin::_InterlockedXor:
     return MakeBinaryAtomicValue(*this, AtomicRMWInst::Xor, E);
+  
+  case MSVCIntrin::_interlockedbittestandset: {
+    llvm::Value *Addr = EmitScalarExpr(E->getArg(0));
+    llvm::Value *Bit = EmitScalarExpr(E->getArg(1));
+    AtomicRMWInst *RMWI = Builder.CreateAtomicRMW(
+        AtomicRMWInst::Or, Addr,
+        Builder.CreateShl(ConstantInt::get(Bit->getType(), 1), Bit),
+        llvm::AtomicOrdering::SequentiallyConsistent);
+    // Shift the relevant bit to the least significant position, truncate to
+    // the result type, and test the low bit.
+    llvm::Value *Shifted = Builder.CreateLShr(RMWI, Bit);
+    llvm::Value *Truncated =
+        Builder.CreateTrunc(Shifted, ConvertType(E->getType()));
+    return Builder.CreateAnd(Truncated,
+                             ConstantInt::get(Truncated->getType(), 1));
+  }
 
   case MSVCIntrin::_InterlockedDecrement: {
     llvm::Type *IntTy = ConvertType(E->getType());
@@ -2195,6 +2212,9 @@ RValue CodeGenFunction::EmitBuiltinExpr(const FunctionDecl *FD,
   case Builtin::BI_InterlockedXor16:
   case Builtin::BI_InterlockedXor:
     return RValue::get(EmitMSVCBuiltinExpr(MSVCIntrin::_InterlockedXor, E));
+  case Builtin::BI_interlockedbittestandset:
+    return RValue::get(
+        EmitMSVCBuiltinExpr(MSVCIntrin::_interlockedbittestandset, E));
   case Builtin::BI__readfsdword: {
     llvm::Type *IntTy = ConvertType(E->getType());
     Value *IntToPtr =

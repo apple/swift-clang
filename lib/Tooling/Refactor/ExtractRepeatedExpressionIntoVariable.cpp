@@ -255,6 +255,8 @@ ExtractRepeatedExpressionIntoVariableOperation::perform(
         "no appropriate insertion location found");
 
   StringRef Name = nameForExtractedVariable(E);
+  auto CreatedSymbol =
+      llvm::make_unique<RefactoringResultAssociatedSymbol>(SymbolName(Name));
 
   // Create the variable that will hold the value of the duplicate expression.
   std::string VariableDeclarationString;
@@ -265,18 +267,28 @@ ExtractRepeatedExpressionIntoVariableOperation::perform(
   PP.SuppressLifetimeQualifiers = true;
   PP.SuppressUnwrittenScope = true;
   T.print(OS, PP, /*PlaceHolder*/ Name);
+  // FIXME: We should hook into the TypePrinter when moving over to llvm.org
+  // instead and get the offset from it.
+  unsigned NameOffset = StringRef(OS.str()).find(Name);
   OS << " = ";
   E->printPretty(OS, /*Helper=*/nullptr, Context.getPrintingPolicy());
   OS << ";\n";
-  Replacements.emplace_back(SourceRange(InsertionLoc, InsertionLoc), OS.str());
+  Replacements.push_back(RefactoringReplacement(
+      SourceRange(InsertionLoc, InsertionLoc), OS.str(), CreatedSymbol.get(),
+      RefactoringReplacement::AssociatedSymbolLocation(
+          llvm::makeArrayRef(NameOffset), /*IsDeclaration=*/true)));
 
   // Replace the duplicates with a reference to the variable.
-  for (const Expr *E : DuplicateExpressions)
-    Replacements.emplace_back(
+  for (const Expr *E : DuplicateExpressions) {
+    Replacements.push_back(RefactoringReplacement(
         SourceRange(SM.getSpellingLoc(E->getLocStart()),
                     getPreciseTokenLocEnd(SM.getSpellingLoc(E->getLocEnd()), SM,
                                           Context.getLangOpts())),
-        Name);
+        Name, CreatedSymbol.get(),
+        /*NameOffset=*/llvm::makeArrayRef(unsigned(0))));
+  }
 
-  return std::move(Replacements);
+  RefactoringResult Result(std::move(Replacements));
+  Result.AssociatedSymbols.push_back(std::move(CreatedSymbol));
+  return std::move(Result);
 }

@@ -37,7 +37,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cstdlib> // ::getenv
 #include <system_error>
+
+#if !defined(_WIN32)
 #include <sys/utsname.h>
+#endif
 
 using namespace clang::driver;
 using namespace clang::driver::toolchains;
@@ -511,6 +514,7 @@ void DarwinClang::AddLinkRuntimeLibArgs(const ArgList &Args,
   }
 }
 
+#if !defined(_WIN32)
 // Clang-900 specific change that's cherry-picked from the LLVM change r307372:
 static std::string getOSVersion() {
   struct utsname info;
@@ -560,6 +564,7 @@ static std::string getSystemOrSDKMacOSVersion(StringRef MacOSSDKVersion) {
     return SystemVersion.getAsString();
   return MacOSSDKVersion;
 }
+#endif // defined(_WIN32)
 
 void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
   const OptTable &Opts = getDriver().getOpts();
@@ -672,7 +677,11 @@ void Darwin::AddDeploymentTarget(DerivedArgList &Args) const {
                 SDK.startswith("iPhoneSimulator"))
               iOSTarget = Version;
             else if (SDK.startswith("MacOSX"))
-              OSXTarget = getSystemOrSDKMacOSVersion(Version);
+#if !defined(_WIN32)
+              OSXTarget = getSystemOrSDKMacOSVersion(Version)
+#else
+              OSXTarget = Version;
+#endif
             else if (SDK.startswith("WatchOS") ||
                      SDK.startswith("WatchSimulator"))
               WatchOSTarget = Version;

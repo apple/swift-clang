@@ -27,7 +27,7 @@ void takesClass(AWrapperClass &wrapper) {
 // RUN: not clang-refactor-test initiate -action extract-repeated-expr-into-var -in=%s:13:20-30 %s 2>&1 | FileCheck --check-prefix=CHECK-NO %s
 
 // RUN: clang-refactor-test list-actions -at=%s:11:11 %s | FileCheck --check-prefix=CHECK-ACTION %s
-// CHECK-ACTION: Extract Repeated Expression
+// CHECK-ACTION: Extract All Occurrences
 
 AClass &returnsReference(int x);
 AClass &returnsAndTakesFunctionPointer(AClass& (*)(int));

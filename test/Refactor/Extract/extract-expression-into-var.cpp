@@ -24,7 +24,7 @@ void extractExpressionIntoVar(int x, int y, int z) {
 // RUN: clang-refactor-test perform -action extract-expression -selected=expr1 -selected=expr2 -selected=expr3 -selected=expr4 -emit-associated %s -std=c++11 | FileCheck %s
 
 // RUN: clang-refactor-test list-actions -at=%s:6:13 -selected=%s:6:13-6:18 %s -std=c++11 | FileCheck --check-prefix=CHECK-ACTION %s
-// CHECK-ACTION: Extract Expression
+// CHECK-ACTION: Extract Variable
 
 void dontExtractStatement(int x, int y) {
   // stmt1-begin: +1:3

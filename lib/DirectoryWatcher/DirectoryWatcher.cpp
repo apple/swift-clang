@@ -31,18 +31,6 @@
 using namespace clang;
 using namespace llvm;
 
-static timespec toTimeSpec(sys::TimePoint<> tp) {
-  std::chrono::seconds sec = std::chrono::time_point_cast<std::chrono::seconds>(
-                 tp).time_since_epoch();
-  std::chrono::nanoseconds nsec =
-    std::chrono::time_point_cast<std::chrono::nanoseconds>(tp - sec)
-      .time_since_epoch();
-  timespec ts;
-  ts.tv_sec = sec.count();
-  ts.tv_nsec = nsec.count();
-  return ts;
-}
-
 static Optional<llvm::sys::TimePoint<>> getModTime(StringRef path) {
   sys::fs::file_status Status;
   std::error_code EC = status(path, Status);

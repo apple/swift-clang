@@ -43,12 +43,12 @@ static timespec toTimeSpec(sys::TimePoint<> tp) {
   return ts;
 }
 
-static Optional<timespec> getModTime(StringRef path) {
+static Optional<llvm::sys::TimePoint<>> getModTime(StringRef path) {
   sys::fs::file_status Status;
   std::error_code EC = status(path, Status);
   if (EC)
     return None;
-  return toTimeSpec(Status.getLastModificationTime());
+  return Status.getLastModificationTime();
 }
 
 struct DirectoryWatcher::Implementation {
@@ -96,7 +96,7 @@ static void eventStreamCallback(
     const FSEventStreamEventFlags flags = eventFlags[i];
     if (!(flags & kFSEventStreamEventFlagItemIsFile)) {
       if ((flags & kFSEventStreamEventFlagItemRemoved) && path == ctx->WatchedPath) {
-        DirectoryWatcher::Event Evt{DirectoryWatcher::EventKind::DirectoryDeleted, path, timespec{}};
+        DirectoryWatcher::Event Evt{DirectoryWatcher::EventKind::DirectoryDeleted, path, llvm::sys::TimePoint<>{} };
         Events.push_back(Evt);
         break;
       }
@@ -108,7 +108,7 @@ static void eventStreamCallback(
       K = DirectoryWatcher::EventKind::Added;
     if (flags & kFSEventStreamEventFlagItemRemoved)
       K = DirectoryWatcher::EventKind::Removed;
-    timespec modTime{};
+    llvm::sys::TimePoint<> modTime{};
     if (K != DirectoryWatcher::EventKind::Removed) {
       auto modTimeOpt = getModTime(path);
       if (!modTimeOpt.hasValue())

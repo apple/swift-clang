@@ -22,10 +22,6 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
-#if !defined(_WIN32)
-#include <unistd.h>
-#endif
-
 using namespace clang;
 using namespace clang::index;
 using namespace clang::index::store;

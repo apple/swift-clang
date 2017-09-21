@@ -22,9 +22,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/raw_ostream.h"
 
-#if defined(_WIN32)
-#include <io.h>
-#else 
+#if !defined(_WIN32)
 #include <unistd.h>
 #endif
 

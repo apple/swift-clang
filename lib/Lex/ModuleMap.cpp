@@ -1617,8 +1617,8 @@ static void diagnosePrivateModules(const ModuleMap &Map,
         M->Name == ActiveModule->Parent->Name) {
       Diags.Report(ActiveModule->DefinitionLoc,
                    diag::warn_mmap_mismatched_private_submodule)
-          << FullName;
-      GenNoteAndFixIt(FullName, Canonical, M);
+          << ActiveModule->getFullModuleName();
+      GenNoteAndFixIt(ActiveModule->getFullModuleName(), Canonical, M);
       continue;
     }
 

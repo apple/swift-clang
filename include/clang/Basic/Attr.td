@@ -88,7 +88,8 @@ def NonBitField : SubsetSubject<Field,
                                 [{!S->isBitField()}]>;
 
 def ObjCClassMethod : SubsetSubject<ObjCMethod,
-                                    [{!S->isInstanceMethod()}]>;
+                                    [{!S->isInstanceMethod()}],
+                                    "Objective-C class method">;
 
 def ObjCInstanceMethod : SubsetSubject<ObjCMethod,
                                        [{S->isInstanceMethod()}]>;

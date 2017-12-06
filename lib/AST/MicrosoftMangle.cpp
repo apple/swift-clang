@@ -2131,9 +2131,12 @@ void MicrosoftCXXNameMangler::mangleCallingConvention(CallingConv CC) {
 
   switch (CC) {
     default:
-      llvm_unreachable("Unsupported CC for mangling");
+      llvm::errs() << "Unsupported CC for mangling: " << CC << ".\n";
     case CC_Win64:
     case CC_X86_64SysV:
+    // FIXME: SwiftCC should have its own mangling specifier.
+    // For now, don't do anything special for SwiftCC mangling.
+    case CC_Swift:
     case CC_C: Out << 'A'; break;
     case CC_X86Pascal: Out << 'C'; break;
     case CC_X86ThisCall: Out << 'E'; break;

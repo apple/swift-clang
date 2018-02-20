@@ -4277,7 +4277,7 @@ public:
   Address EmitVAArg(CodeGenFunction &CGF, Address VAListAddr,
                     QualType Ty) const override;
 
-  bool shouldPassIndirectlyForSwift( ArrayRef<llvm::Type*> scalars,
+  bool shouldPassIndirectlyForSwift(ArrayRef<llvm::Type*> scalars,
                                     bool asReturnValue) const override {
     return occupiesMoreThan(CGT, scalars, /*total*/ 4);
   }

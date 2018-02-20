@@ -1780,10 +1780,10 @@ public:
 
   CallingConvCheckResult checkCallingConvention(CallingConv CC) const override {
     switch (CC) {
-      case CC_Swift:
-        return CCCR_OK;
-      default:
-        return CCCR_Warning;
+    case CC_Swift:
+      return CCCR_OK;
+    default:
+      return CCCR_Warning;
     }
   }
 };

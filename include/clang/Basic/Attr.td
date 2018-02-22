@@ -1708,6 +1708,12 @@ def SwiftNewtype : InheritableAttr {
   let Documentation = [SwiftNewtypeDocs];
 }
 
+def SwiftNonbridged : InheritableAttr {
+  let Spellings = [GNU<"swift_nonbridged">];
+  let Subjects = SubjectList<[TypedefName], ErrorDiag, "ExpectedType">;
+  let Documentation = [Undocumented];
+}
+
 def SwiftPrivate : InheritableAttr {
   let Spellings = [GCC<"swift_private">];
   let Documentation = [Undocumented];

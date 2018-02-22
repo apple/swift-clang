@@ -95,6 +95,9 @@
 // CHECK-VERSIONED-NOT: __attribute__((swift_objc_members)
 // CHECK-VERSIONED: @interface TestProperties
 
+// CHECK-UNVERSIONED: typedef NSString *UnbridgedNSString __attribute__((swift_nonbridged));
+// CHECK-VERSIONED: typedef NSString *UnbridgedNSString;
+
 // CHECK-UNVERSIONED-LABEL: enum FlagEnum {
 // CHECK-UNVERSIONED-NEXT:     FlagEnumA = 1,
 // CHECK-UNVERSIONED-NEXT:     FlagEnumB = 2

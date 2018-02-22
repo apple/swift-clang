@@ -125,6 +125,8 @@ SwiftVersions:
         SwiftName: MultiVersionedTypedef45Header_5
       - Name: MultiVersionedTypedef45Notes
         SwiftName: MultiVersionedTypedef45Notes_5
+      - Name: UnbridgedNSString
+        SwiftNonbridged: false
   - Version: 4 # Versions are deliberately ordered as "3, 5, 4" to catch bugs.
     Classes:
       - Name: Swift4RenamedDUMP

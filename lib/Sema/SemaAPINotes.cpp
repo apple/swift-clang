@@ -669,6 +669,13 @@ static void ProcessAPINotes(Sema &S, TypedefNameDecl *D,
     });
   }
 
+  if (Optional<bool> nonbridged = info.SwiftNonbridged) {
+    handleAPINotedAttribute<SwiftNonbridgedAttr>(S, D, nonbridged.getValue(),
+                                                 metadata, [&] {
+      return SwiftNonbridgedAttr::CreateImplicit(S.Context);
+    });
+  }
+
   // Handle common type information.
   ProcessAPINotes(S, D, static_cast<const api_notes::CommonTypeInfo &>(info),
                   metadata);

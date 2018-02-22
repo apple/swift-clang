@@ -164,6 +164,7 @@ Typedefs:
     SwiftPrivate:    false
     SwiftName:       Typedef
     SwiftBridge:     ''
+    SwiftNonbridged: false
     SwiftWrapper:    struct
 SwiftVersions:   
   - Version:         3.0

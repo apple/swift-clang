@@ -287,6 +287,7 @@ namespace {
     AvailabilityItem Availability;
     StringRef SwiftName;
     Optional<bool> SwiftPrivate;
+    Optional<bool> SwiftNonbridged;
     Optional<StringRef> SwiftBridge;
     Optional<StringRef> NSErrorDomain;
     Optional<api_notes::SwiftWrapperKind> SwiftWrapper;
@@ -582,8 +583,9 @@ namespace llvm {
         io.mapOptional("SwiftPrivate",          t.SwiftPrivate);
         io.mapOptional("SwiftName",             t.SwiftName);
         io.mapOptional("SwiftBridge",           t.SwiftBridge);
+        io.mapOptional("SwiftNonbridged",       t.SwiftNonbridged);
         io.mapOptional("NSErrorDomain",         t.NSErrorDomain);
-        io.mapOptional("SwiftWrapper",         t.SwiftWrapper);
+        io.mapOptional("SwiftWrapper",          t.SwiftWrapper);
       }
     };
 
@@ -1049,6 +1051,7 @@ namespace {
         if (convertCommonType(t, typedefInfo, t.Name))
           continue;
         typedefInfo.SwiftWrapper = t.SwiftWrapper;
+        typedefInfo.SwiftNonbridged = t.SwiftNonbridged;
 
         Writer->addTypedef(t.Name, typedefInfo, swiftVersion);
       }
@@ -1405,6 +1408,7 @@ namespace {
       td.Name = name;
       handleCommonType(td, info);
       td.SwiftWrapper = info.SwiftWrapper;
+      td.SwiftNonbridged = info.SwiftNonbridged;
       auto &items = getTopLevelItems(swiftVersion);
       items.Typedefs.push_back(td);
     }

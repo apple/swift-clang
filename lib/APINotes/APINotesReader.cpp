@@ -1,4 +1,4 @@
-//===--- APINotesReader.cpp - Side Car Reader --------------------*- C++ -*-===//
+//===--- APINotesReader.cpp - Side Car Reader -------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -525,9 +525,12 @@ namespace {
       TypedefInfo info;
 
       uint8_t payload = *data++;
-      if (payload > 0) {
+      if ((payload & 0x3) > 0) {
         info.SwiftWrapper = static_cast<SwiftWrapperKind>((payload & 0x3) - 1);
       }
+      payload >>= 3;
+      if (payload & 0x1)
+        info.SwiftNonbridged = (bool)(payload & 0x2);
 
       readCommonTypeInfo(data, info);
       return info;

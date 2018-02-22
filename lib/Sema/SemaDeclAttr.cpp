@@ -7048,6 +7048,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
   case AttributeList::AT_SwiftNewtype:
     handleSwiftNewtypeAttr(S, D, Attr);
     break;
+  case AttributeList::AT_SwiftNonbridged:
+    handleSimpleAttribute<SwiftNonbridgedAttr>(S, D, Attr);
+    break;
   // XRay attributes.
   case AttributeList::AT_XRayInstrument:
     handleSimpleAttribute<XRayInstrumentAttr>(S, D, Attr);

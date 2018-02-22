@@ -1,4 +1,4 @@
-//===--- APINotesWriter.cpp - API Notes Writer --------------------*- C++ -*-===//
+//===--- APINotesWriter.cpp - API Notes Writer ------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -1141,6 +1141,13 @@ namespace {
       endian::Writer<little> writer(out);
 
       uint8_t payload = 0;
+
+      if (Optional<bool> value = info.SwiftNonbridged) {
+        payload |= 1 << 0;
+        payload |= value.getValue() << 1;
+      }
+
+      payload <<= 3;
       if (auto swiftWrapper = info.SwiftWrapper) {
         payload |= static_cast<uint8_t>(*swiftWrapper) + 1;
       }

@@ -767,6 +767,7 @@ enum class SwiftWrapperKind {
 class TypedefInfo : public CommonTypeInfo {
 public:
   Optional<SwiftWrapperKind> SwiftWrapper;
+  Optional<bool> SwiftNonbridged;
 
   TypedefInfo() : CommonTypeInfo() { }
 
@@ -774,12 +775,15 @@ public:
     lhs |= static_cast<const CommonTypeInfo &>(rhs);
     if (!lhs.SwiftWrapper.hasValue() && rhs.SwiftWrapper.hasValue())
       lhs.SwiftWrapper = rhs.SwiftWrapper;
+    if (!lhs.SwiftNonbridged.hasValue() && rhs.SwiftNonbridged.hasValue())
+      lhs.SwiftNonbridged = rhs.SwiftNonbridged;
     return lhs;
   }
 
   friend bool operator==(const TypedefInfo &lhs, const TypedefInfo &rhs) {
     return static_cast<const CommonTypeInfo &>(lhs) == rhs &&
-           lhs.SwiftWrapper == rhs.SwiftWrapper;
+           lhs.SwiftWrapper == rhs.SwiftWrapper &&
+           lhs.SwiftNonbridged == rhs.SwiftNonbridged;
   }
 };
 

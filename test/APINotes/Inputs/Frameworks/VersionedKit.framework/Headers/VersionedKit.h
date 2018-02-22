@@ -49,6 +49,8 @@ __attribute__((swift_name("Swift4Name")))
 @interface Swift4RenamedDUMP
 @end
 
+typedef NSString *UnbridgedNSString __attribute__((swift_nonbridged));
+
 #endif
 
 

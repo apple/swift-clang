@@ -8079,6 +8079,7 @@ class MipsTargetInfo : public TargetInfo {
   } DspRev;
   bool HasMSA;
   bool DisableMadd4;
+  bool UseIndirectJumpHazard;
 
 protected:
   bool HasFP64;
@@ -8089,7 +8090,8 @@ public:
       : TargetInfo(Triple), IsMips16(false), IsMicromips(false),
         IsNan2008(false), IsSingleFloat(false), IsNoABICalls(false),
         CanUseBSDABICalls(false), FloatABI(HardFloat), DspRev(NoDSP),
-        HasMSA(false), DisableMadd4(false), HasFP64(false) {
+        HasMSA(false), DisableMadd4(false), UseIndirectJumpHazard(false),
+        HasFP64(false) {
     TheCXXABI.set(TargetCXXABI::GenericMIPS);
 
     setABI((getTriple().getArch() == llvm::Triple::mips ||
@@ -8512,6 +8514,8 @@ public:
         IsNan2008 = false;
       else if (Feature == "+noabicalls")
         IsNoABICalls = true;
+      else if (Feature == "+use-indirect-jump-hazard")
+        UseIndirectJumpHazard = true;
     }
 
     setDataLayout();

@@ -243,15 +243,17 @@ public:
 private:
   bool handleDeclOccurence(const Decl *D, SymbolRoleSet Roles,
                            ArrayRef<SymbolRelation> Relations,
-                           FileID FID, unsigned Offset,
-                           ASTNodeInfo ASTNode) override {
+                           SourceLocation Loc, ASTNodeInfo ASTNode) override {
+    SourceManager &SM = PP->getSourceManager();
+    FileID FID = SM.getFileID(SM.getFileLoc(Loc));
+
     // Ignore the predefines buffer.
     const FileEntry *FE = PP->getSourceManager().getFileEntryForID(FID);
     if (!FE)
       return true;
 
     FileIndexRecord &Rec = getFileIndexRecord(FID);
-    Rec.addDeclOccurence(Roles, Offset, D, Relations);
+    Rec.addDeclOccurence(Roles, SM.getFileOffset(Loc), D, Relations);
     return true;
   }
 

@@ -1762,7 +1762,6 @@ Sema::ActOnForwardProtocolDeclaration(SourceLocation AtProtocolLoc,
       = ObjCProtocolDecl::Create(Context, CurContext, Ident, 
                                  IdentPair.second, AtProtocolLoc,
                                  PrevDecl);
-    ProcessAPINotes(PDecl);
 
     PushOnScopeChains(PDecl, TUScope);
     CheckObjCDeclScope(PDecl);
@@ -1770,7 +1769,6 @@ Sema::ActOnForwardProtocolDeclaration(SourceLocation AtProtocolLoc,
     if (attrList)
       ProcessDeclAttributeList(TUScope, PDecl, attrList);
     AddPragmaAttributes(TUScope, PDecl);
-    ProcessAPINotes(PDecl);
 
     if (PrevDecl)
       mergeDeclAttributes(PDecl, PrevDecl);
@@ -3149,7 +3147,6 @@ Sema::ActOnForwardClassDeclaration(SourceLocation AtClassLoc,
                                   ClassName, TypeParams, PrevIDecl,
                                   IdentLocs[i]);
     IDecl->setAtEndRange(IdentLocs[i]);
-    ProcessAPINotes(IDecl);
 
     PushOnScopeChains(IDecl, TUScope);
     CheckObjCDeclScope(IDecl);

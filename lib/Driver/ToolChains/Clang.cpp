@@ -3407,6 +3407,12 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                    options::OPT_fdelete_null_pointer_checks, false))
     CmdArgs.push_back("-fno-delete-null-pointer-checks");
 
+  if (Args.hasArg(options::OPT_fmerge_similar_functions))
+    CmdArgs.push_back("-fmerge-similar-functions");
+
+  if (Args.hasArg(options::OPT_fmerge_functions))
+    CmdArgs.push_back("-fmerge-functions");
+
   // LLVM Code Generator Options.
 
   if (Args.hasArg(options::OPT_frewrite_map_file) ||

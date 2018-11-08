@@ -743,6 +743,7 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                                          OPT_fno_unique_section_names, true);
 
   Opts.MergeFunctions = Args.hasArg(OPT_fmerge_functions);
+  Opts.MergeSimilarFunctions = Args.hasArg(OPT_fmerge_similar_functions);
 
   Opts.NoUseJumpTables = Args.hasArg(OPT_fno_jump_tables);
 

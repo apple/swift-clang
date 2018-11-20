@@ -178,6 +178,9 @@ void computeABIInfo(CodeGenModule &CGM, CGFunctionInfo &FI);
 /// Is swifterror lowered to a register by the target ABI?
 bool isSwiftErrorLoweredInRegister(CodeGenModule &CGM);
 
+/// Does that target ABI support the `swiftcc` calling convention?
+bool supportsSwiftCC(CodeGenModule &CGM);
+
 } // end namespace swiftcall
 } // end namespace CodeGen
 } // end namespace clang

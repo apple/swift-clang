@@ -752,6 +752,10 @@ private:
   bool isSwiftErrorInRegister() const override {
     return false;
   }
+
+  bool supportsSwiftCC() const override {
+    return false;
+  }
 };
 
 class WebAssemblyTargetCodeGenInfo final : public TargetCodeGenInfo {

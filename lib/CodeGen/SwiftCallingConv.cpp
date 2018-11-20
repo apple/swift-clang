@@ -863,3 +863,7 @@ void swiftcall::computeABIInfo(CodeGenModule &CGM, CGFunctionInfo &FI) {
 bool swiftcall::isSwiftErrorLoweredInRegister(CodeGenModule &CGM) {
   return getSwiftABIInfo(CGM).isSwiftErrorInRegister();
 }
+
+bool swiftcall::supportsSwiftCC(CodeGenModule &CGM) {
+  return getSwiftABIInfo(CGM).supportsSwiftCC();
+}

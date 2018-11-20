@@ -136,6 +136,10 @@ namespace swiftcall {
 
     virtual bool isSwiftErrorInRegister() const = 0;
 
+    virtual bool supportsSwiftCC() const {
+      return true;
+    }
+
     static bool classof(const ABIInfo *info) {
       return info->supportsSwift();
     }

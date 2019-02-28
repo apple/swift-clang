@@ -92,7 +92,8 @@ static void runWatcher(std::string pathToWatch, int inotifyFD,
   char buf[EventBufferLength] __attribute__((aligned(8)));
 
   while (1) {
-    ssize_t numRead = llvm::RetryAfterSignal(-1, read, inotifyFD, buf, EventBufferLength);
+    ssize_t numRead = llvm::sys::::RetryAfterSignal(-1, read, inotifyFD, buf,
+                                                    EventBufferLength);
 
     SmallVector<INotifyEvent, 8> iEvents;
     for (char *p = buf; p < buf + numRead;) {

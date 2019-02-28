@@ -7,11 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/Errno.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/Path.h"
+#include <sys/inotify.h>
 #include <thread>
 #include <unistd.h>
-#include <sys/inotify.h>
 
 namespace {
 
@@ -73,14 +73,12 @@ public:
     PendingEvents.clear();
   }
 };
-}  // namespace
+} // namespace
 
 struct DirectoryWatcher::Implementation {
-  bool initialize(StringRef Path, EventReceiver Receiver,
-                  bool waitInitialSync, std::string &Error);
-  ~Implementation() {
-    stopListening();
-  };
+  bool initialize(StringRef Path, EventReceiver Receiver, bool waitInitialSync,
+                  std::string &Error);
+  ~Implementation() { stopListening(); };
 
 private:
   int inotifyFD = -1;
@@ -90,15 +88,18 @@ private:
 
 static void runWatcher(std::string pathToWatch, int inotifyFD,
                        std::shared_ptr<EventQueue> evtQueue) {
-  constexpr size_t EventBufferLength = 30 * (sizeof(struct inotify_event) + NAME_MAX + 1);
+  constexpr size_t EventBufferLength =
+      30 * (sizeof(struct inotify_event) + NAME_MAX + 1);
   char buf[EventBufferLength] __attribute__((aligned(8)));
 
   while (1) {
-    ssize_t numRead = llvm::sys::RetryAfterSignal(-1, read, inotifyFD, reinterpret_cast<char*>(buf), EventBufferLength);
+    ssize_t numRead = llvm::sys::RetryAfterSignal(
+        -1, read, inotifyFD, reinterpret_cast<char *>(buf), EventBufferLength);
 
     SmallVector<INotifyEvent, 8> iEvents;
     for (char *p = buf; p < buf + numRead;) {
-      assert(p + sizeof(struct inotify_event) <= buf + numRead && "a whole inotify_event was read");
+      assert(p + sizeof(struct inotify_event) <= buf + numRead &&
+             "a whole inotify_event was read");
       struct inotify_event *ievt = reinterpret_cast<struct inotify_event *>(p);
       p += sizeof(struct inotify_event) + ievt->len;
 
@@ -109,7 +110,7 @@ static void runWatcher(std::string pathToWatch, int inotifyFD,
         break;
       }
 
-      DirectoryWatcher::EventKind K = [&ievt](){
+      DirectoryWatcher::EventKind K = [&ievt]() {
         if (ievt->mask & IN_MODIFY)
           return DirectoryWatcher::EventKind::Modified;
         if (ievt->mask & IN_MOVED_TO)
@@ -144,16 +145,16 @@ bool DirectoryWatcher::Implementation::initialize(StringRef Path,
     return true;
   };
 
-	auto evtQueue = std::make_shared<EventQueue>(std::move(Receiver));
+  auto evtQueue = std::make_shared<EventQueue>(std::move(Receiver));
 
   inotifyFD = inotify_init();
   if (inotifyFD == -1)
     return error("inotify_init failed");
 
   std::string pathToWatch = Path;
-  int wd = inotify_add_watch(
-      inotifyFD, pathToWatch.c_str(),
-      IN_MOVED_TO | IN_DELETE | IN_MODIFY | IN_DELETE_SELF | IN_ONLYDIR);
+  int wd = inotify_add_watch(inotifyFD, pathToWatch.c_str(),
+                             IN_MOVED_TO | IN_DELETE | IN_MODIFY |
+                                 IN_DELETE_SELF | IN_ONLYDIR);
   if (wd == -1)
     return error("inotify_add_watch failed");
 

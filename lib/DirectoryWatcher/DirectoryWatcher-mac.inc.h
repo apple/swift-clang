@@ -56,8 +56,10 @@ static void eventStreamCallback(
     StringRef path = ((const char **)eventPaths)[i];
     const FSEventStreamEventFlags flags = eventFlags[i];
     if (!(flags & kFSEventStreamEventFlagItemIsFile)) {
-      if ((flags & kFSEventStreamEventFlagItemRemoved) && path == ctx->WatchedPath) {
-        DirectoryWatcher::Event Evt{DirectoryWatcher::EventKind::DirectoryDeleted, path, llvm::sys::TimePoint<>{} };
+      if ((flags & kFSEventStreamEventFlagItemRemoved) &&
+          path == ctx->WatchedPath) {
+        DirectoryWatcher::Event Evt{
+            DirectoryWatcher::EventKind::DirectoryDeleted, path};
         Events.push_back(Evt);
         break;
       }
@@ -97,10 +99,7 @@ static void eventStreamCallback(
       }
     }
 
-    llvm::sys::TimePoint<> modTime{};
-    if (statusOpt.hasValue())
-      modTime = statusOpt->getLastModificationTime();
-    DirectoryWatcher::Event Evt{K, path, modTime};
+    DirectoryWatcher::Event Evt{K, path};
     Events.push_back(Evt);
   }
 

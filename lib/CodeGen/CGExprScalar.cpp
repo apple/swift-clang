@@ -2196,14 +2196,14 @@ ScalarExprEmitter::EmitScalarPrePostIncDec(const UnaryOperator *E, LValue LV,
   }
 
   if (atomicPHI) {
-    llvm::BasicBlock *curBlock = Builder.GetInsertBlock();
+    llvm::BasicBlock *opBB = Builder.GetInsertBlock();
     llvm::BasicBlock *contBB = CGF.createBasicBlock("atomic_cont", CGF.CurFn);
     auto Pair = CGF.EmitAtomicCompareExchange(
         LV, RValue::get(atomicPHI), RValue::get(value), E->getExprLoc());
     llvm::Value *old = CGF.EmitToMemory(Pair.first.getScalarVal(), type);
     llvm::Value *success = Pair.second;
-    atomicPHI->addIncoming(old, curBlock);
-    Builder.CreateCondBr(success, contBB, atomicPHI->getParent());
+    atomicPHI->addIncoming(old, opBB);
+    Builder.CreateCondBr(success, contBB, opBB);
     Builder.SetInsertPoint(contBB);
     return isPre ? value : input;
   }
@@ -2547,14 +2547,14 @@ LValue ScalarExprEmitter::EmitCompoundAssignLValue(
       EmitScalarConversion(Result, E->getComputationResultType(), LHSTy, Loc);
 
   if (atomicPHI) {
-    llvm::BasicBlock *curBlock = Builder.GetInsertBlock();
+    llvm::BasicBlock *opBB = Builder.GetInsertBlock();
     llvm::BasicBlock *contBB = CGF.createBasicBlock("atomic_cont", CGF.CurFn);
     auto Pair = CGF.EmitAtomicCompareExchange(
         LHSLV, RValue::get(atomicPHI), RValue::get(Result), E->getExprLoc());
     llvm::Value *old = CGF.EmitToMemory(Pair.first.getScalarVal(), LHSTy);
     llvm::Value *success = Pair.second;
-    atomicPHI->addIncoming(old, curBlock);
-    Builder.CreateCondBr(success, contBB, atomicPHI->getParent());
+    atomicPHI->addIncoming(old, opBB);
+    Builder.CreateCondBr(success, contBB, opBB);
     Builder.SetInsertPoint(contBB);
     return LHSLV;
   }

@@ -88,15 +88,18 @@ private:
 
 static void runWatcher(std::string pathToWatch, int inotifyFD,
                        std::shared_ptr<EventQueue> evtQueue) {
-  constexpr size_t EventBufferLength = 30 * (sizeof(struct inotify_event) + NAME_MAX + 1);
+  constexpr size_t EventBufferLength =
+      30 * (sizeof(struct inotify_event) + NAME_MAX + 1);
   char buf[EventBufferLength] __attribute__((aligned(8)));
 
   while (1) {
-    ssize_t numRead = llvm::sys::RetryAfterSignal(-1, read, inotifyFD, reinterpret_cast<char*>(buf), EventBufferLength);
+    ssize_t numRead = llvm::sys::RetryAfterSignal(
+        -1, read, inotifyFD, reinterpret_cast<char *>(buf), EventBufferLength);
 
     SmallVector<INotifyEvent, 8> iEvents;
     for (char *p = buf; p < buf + numRead;) {
-      assert(p + sizeof(struct inotify_event) <= buf + numRead && "a whole inotify_event was read");
+      assert(p + sizeof(struct inotify_event) <= buf + numRead &&
+             "a whole inotify_event was read");
       struct inotify_event *ievt = reinterpret_cast<struct inotify_event *>(p);
       p += sizeof(struct inotify_event) + ievt->len;
 
@@ -107,7 +110,7 @@ static void runWatcher(std::string pathToWatch, int inotifyFD,
         break;
       }
 
-      DirectoryWatcher::EventKind K = [&ievt](){
+      DirectoryWatcher::EventKind K = [&ievt]() {
         if (ievt->mask & IN_MODIFY)
           return DirectoryWatcher::EventKind::Modified;
         if (ievt->mask & IN_MOVED_TO)

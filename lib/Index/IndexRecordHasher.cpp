@@ -13,8 +13,7 @@
 #include "clang/AST/DeclVisitor.h"
 #include "llvm/Support/Path.h"
 
-#define INITIAL_HASH 5381
-#define COMBINE_HASH(...) (Hash = hash_combine(Hash, __VA_ARGS__))
+constexpr size_t InitialHash = 5381;
 
 using namespace clang;
 using namespace clang::index;
@@ -37,9 +36,9 @@ public:
   hash_code VisitNamedDecl(const NamedDecl *D) {
     hash_code Hash = VisitDecl(D);
     if (auto *attr = D->getExternalSourceSymbolAttr()) {
-      COMBINE_HASH(hash_value(attr->getDefinedIn()));
+      Hash = hash_combine(Hash, hash_value(attr->getDefinedIn()));
     }
-    return COMBINE_HASH(Hasher.hash(D->getDeclName()));
+    return hash_combine(Hash, Hasher.hash(D->getDeclName()));
   }
 
   hash_code VisitTagDecl(const TagDecl *D) {
@@ -49,29 +48,29 @@ public:
 
       hash_code Hash = VisitDeclContext(D->getDeclContext());
       if (D->isEmbeddedInDeclarator() && !D->isFreeStanding()) {
-        COMBINE_HASH(hashLoc(D->getLocation(), /*IncludeOffset=*/true));
+        Hash = hash_combine(Hash, hashLoc(D->getLocation(), /*IncludeOffset=*/true));
       } else
-        COMBINE_HASH('a');
+        Hash = hash_combine(Hash, 'a');
       return Hash;
     }
 
     hash_code Hash = VisitTypeDecl(D);
-    return COMBINE_HASH('T');
+    return hash_combine(Hash, 'T');
   }
 
   hash_code VisitClassTemplateSpecializationDecl(const ClassTemplateSpecializationDecl *D) {
     hash_code Hash = VisitCXXRecordDecl(D);
     const TemplateArgumentList &Args = D->getTemplateArgs();
-    COMBINE_HASH('>');
+    Hash = hash_combine(Hash, '>');
     for (unsigned I = 0, N = Args.size(); I != N; ++I) {
-      COMBINE_HASH(computeHash(Args.get(I), Hasher));
+      Hash = hash_combine(Hash, computeHash(Args.get(I), Hasher));
     }
     return Hash;
   }
 
   hash_code VisitObjCContainerDecl(const ObjCContainerDecl *D) {
     hash_code Hash = VisitNamedDecl(D);
-    return COMBINE_HASH('I');
+    return hash_combine(Hash, 'I');
   }
 
   hash_code VisitObjCImplDecl(const ObjCImplDecl *D) {
@@ -97,20 +96,20 @@ public:
       return Hash;
 
     for (auto param : D->parameters()) {
-      COMBINE_HASH(Hasher.hash(param->getType()));
+      Hash = hash_combine(Hash, Hasher.hash(param->getType()));
     }
     return Hash;
   }
 
   hash_code VisitUnresolvedUsingTypenameDecl(const UnresolvedUsingTypenameDecl *D) {
     hash_code Hash = VisitNamedDecl(D);
-    COMBINE_HASH(Hasher.hash(D->getQualifier()));
+    Hash = hash_combine(Hash, Hasher.hash(D->getQualifier()));
     return Hash;
   }
 
   hash_code VisitUnresolvedUsingValueDecl(const UnresolvedUsingValueDecl *D) {
     hash_code Hash = VisitNamedDecl(D);
-    COMBINE_HASH(Hasher.hash(D->getQualifier()));
+    Hash = hash_combine(Hash, Hasher.hash(D->getQualifier()));
     return Hash;
   }
 
@@ -128,13 +127,13 @@ public:
     if (Loc.isInvalid()) {
       return 0;
     }
-    hash_code Hash = INITIAL_HASH;
+    hash_code Hash = InitialHash;
     const SourceManager &SM = Hasher.getASTContext().getSourceManager();
     Loc = SM.getFileLoc(Loc);
     const std::pair<FileID, unsigned> &Decomposed = SM.getDecomposedLoc(Loc);
     const FileEntry *FE = SM.getFileEntryForID(Decomposed.first);
     if (FE) {
-      COMBINE_HASH(llvm::sys::path::filename(FE->getName()));
+      Hash = hash_combine(Hash, llvm::sys::path::filename(FE->getName()));
     } else {
       // This case really isn't interesting.
       return 0;
@@ -143,7 +142,7 @@ public:
       // Use the offest into the FileID to represent the location.  Using
       // a line/column can cause us to look back at the original source file,
       // which is expensive.
-      COMBINE_HASH(Decomposed.second);
+      Hash = hash_combine(Hash, Decomposed.second);
     }
     return Hash;
   }
@@ -151,11 +150,11 @@ public:
 }
 
 hash_code IndexRecordHasher::hashRecord(const FileIndexRecord &Record) {
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
   for (auto &Info : Record.getDeclOccurrencesSortedByOffset()) {
-    COMBINE_HASH(Info.Roles, Info.Offset, hash(Info.Dcl));
+    Hash = hash_combine(Hash, Info.Roles, Info.Offset, hash(Info.Dcl));
     for (auto &Rel : Info.Relations) {
-      COMBINE_HASH(hash(Rel.RelatedSymbol));
+      Hash = hash_combine(Hash, hash(Rel.RelatedSymbol));
     }
   }
   return Hash;
@@ -186,7 +185,7 @@ hash_code IndexRecordHasher::hash(QualType NonCanTy) {
 hash_code IndexRecordHasher::hash(CanQualType CT) {
   // Do some hashing without going to the cache, for example we can avoid
   // storing the hash for both the type and its const-qualified version.
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
 
   auto asCanon = [](QualType Ty) -> CanQualType {
     return CanQualType::CreateUnsafe(Ty);
@@ -204,47 +203,47 @@ hash_code IndexRecordHasher::hash(CanQualType CT) {
     if (Q.hasRestrict())
       qVal |= 0x4;
     if(qVal)
-      COMBINE_HASH(qVal);
+      Hash = hash_combine(Hash, qVal);
 
     // Hash in ObjC GC qualifiers?
 
     if (const BuiltinType *BT = dyn_cast<BuiltinType>(T)) {
-      return COMBINE_HASH(BT->getKind());
+      return hash_combine(Hash, BT->getKind());
     }
     if (const PointerType *PT = dyn_cast<PointerType>(T)) {
-      COMBINE_HASH('*');
+      Hash = hash_combine(Hash, '*');
       CT = asCanon(PT->getPointeeType());
       continue;
     }
     if (const ReferenceType *RT = dyn_cast<ReferenceType>(T)) {
-      COMBINE_HASH('&');
+      Hash = hash_combine(Hash, '&');
       CT = asCanon(RT->getPointeeType());
       continue;
     }
     if (const BlockPointerType *BT = dyn_cast<BlockPointerType>(T)) {
-      COMBINE_HASH('B');
+      Hash = hash_combine(Hash, 'B');
       CT = asCanon(BT->getPointeeType());
       continue;
     }
     if (const ObjCObjectPointerType *OPT = dyn_cast<ObjCObjectPointerType>(T)) {
-      COMBINE_HASH('*');
+      Hash = hash_combine(Hash, '*');
       CT = asCanon(OPT->getPointeeType());
       continue;
     }
     if (const TagType *TT = dyn_cast<TagType>(T)) {
-      return COMBINE_HASH('$', hash(TT->getDecl()->getCanonicalDecl()));
+      return hash_combine(Hash, '$', hash(TT->getDecl()->getCanonicalDecl()));
     }
     if (const ObjCInterfaceType *OIT = dyn_cast<ObjCInterfaceType>(T)) {
-      return COMBINE_HASH('$', hash(OIT->getDecl()->getCanonicalDecl()));
+      return hash_combine(Hash, '$', hash(OIT->getDecl()->getCanonicalDecl()));
     }
     if (const ObjCObjectType *OIT = dyn_cast<ObjCObjectType>(T)) {
       for (auto *Prot : OIT->getProtocols())
-        COMBINE_HASH(hash(Prot));
+        Hash = hash_combine(Hash, hash(Prot));
       CT = asCanon(OIT->getBaseType());
       continue;
     }
     if (const TemplateTypeParmType *TTP = dyn_cast<TemplateTypeParmType>(T)) {
-      return COMBINE_HASH('t', TTP->getDepth(), TTP->getIndex());
+      return hash_combine(Hash, 't', TTP->getDepth(), TTP->getIndex());
     }
     if (const InjectedClassNameType *InjT = dyn_cast<InjectedClassNameType>(T)) {
       CT = asCanon(InjT->getInjectedSpecializationType().getCanonicalType());
@@ -254,7 +253,7 @@ hash_code IndexRecordHasher::hash(CanQualType CT) {
     break;
   }
 
-  return COMBINE_HASH(tryCache(CT.getAsOpaquePtr(), CT));
+  return hash_combine(Hash, tryCache(CT.getAsOpaquePtr(), CT));
 }
 
 hash_code IndexRecordHasher::hash(DeclarationName Name) {
@@ -300,22 +299,22 @@ static hash_code computeHash(Selector Sel) {
   unsigned N = Sel.getNumArgs();
   if (N == 0)
     ++N;
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
   for (unsigned I = 0; I != N; ++I)
     if (IdentifierInfo *II = Sel.getIdentifierInfoForSlot(I))
-      COMBINE_HASH(computeHash(II));
+      Hash = hash_combine(Hash, computeHash(II));
   return Hash;
 }
 
 static hash_code computeHash(TemplateName Name, IndexRecordHasher &Hasher) {
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
   if (TemplateDecl *Template = Name.getAsTemplateDecl()) {
     if (TemplateTemplateParmDecl *TTP
         = dyn_cast<TemplateTemplateParmDecl>(Template)) {
-      return COMBINE_HASH('t', TTP->getDepth(), TTP->getIndex());
+      return hash_combine(Hash, 't', TTP->getDepth(), TTP->getIndex());
     }
 
-    return COMBINE_HASH(Hasher.hash(Template->getCanonicalDecl()));
+    return hash_combine(Hash, Hasher.hash(Template->getCanonicalDecl()));
   }
 
   // FIXME: Hash dependent template names.
@@ -324,24 +323,24 @@ static hash_code computeHash(TemplateName Name, IndexRecordHasher &Hasher) {
 
 static hash_code computeHash(const TemplateArgument &Arg,
                              IndexRecordHasher &Hasher) {
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
 
   switch (Arg.getKind()) {
   case TemplateArgument::Null:
     break;
 
   case TemplateArgument::Declaration:
-    COMBINE_HASH(Hasher.hash(Arg.getAsDecl()));
+    Hash = hash_combine(Hash, Hasher.hash(Arg.getAsDecl()));
     break;
 
   case TemplateArgument::NullPtr:
     break;
 
   case TemplateArgument::TemplateExpansion:
-    COMBINE_HASH('P'); // pack expansion of...
+    Hash = hash_combine(Hash, 'P'); // pack expansion of...
     LLVM_FALLTHROUGH;
   case TemplateArgument::Template:
-    COMBINE_HASH(computeHash(Arg.getAsTemplateOrTemplatePattern(), Hasher));
+    Hash = hash_combine(Hash, computeHash(Arg.getAsTemplateOrTemplatePattern(), Hasher));
     break;
       
   case TemplateArgument::Expression:
@@ -349,17 +348,17 @@ static hash_code computeHash(const TemplateArgument &Arg,
     break;
       
   case TemplateArgument::Pack:
-    COMBINE_HASH('p');
+    Hash = hash_combine(Hash, 'p');
     for (const auto &P : Arg.pack_elements())
-      COMBINE_HASH(computeHash(P, Hasher));
+      Hash = hash_combine(Hash, computeHash(P, Hasher));
     break;
       
   case TemplateArgument::Type:
-    COMBINE_HASH(Hasher.hash(Arg.getAsType()));
+    Hash = hash_combine(Hash, Hasher.hash(Arg.getAsType()));
     break;
       
   case TemplateArgument::Integral:
-    COMBINE_HASH('V', Hasher.hash(Arg.getIntegralType()), Arg.getAsIntegral());
+    Hash = hash_combine(Hash, 'V', Hasher.hash(Arg.getIntegralType()), Arg.getAsIntegral());
     break;
   }
 
@@ -367,7 +366,7 @@ static hash_code computeHash(const TemplateArgument &Arg,
 }
 
 hash_code IndexRecordHasher::hashImpl(CanQualType CQT) {
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
 
   auto asCanon = [](QualType Ty) -> CanQualType {
     return CanQualType::CreateUnsafe(Ty);
@@ -376,32 +375,32 @@ hash_code IndexRecordHasher::hashImpl(CanQualType CQT) {
   const Type *T = CQT.getTypePtr();
 
   if (const PackExpansionType *Expansion = dyn_cast<PackExpansionType>(T)) {
-    return COMBINE_HASH('P', hash(asCanon(Expansion->getPattern())));
+    return hash_combine(Hash, 'P', hash(asCanon(Expansion->getPattern())));
   }
   if (const RValueReferenceType *RT = dyn_cast<RValueReferenceType>(T)) {
-    return COMBINE_HASH('%', hash(asCanon(RT->getPointeeType())));
+    return hash_combine(Hash, '%', hash(asCanon(RT->getPointeeType())));
   }
   if (const FunctionProtoType *FT = dyn_cast<FunctionProtoType>(T)) {
-    COMBINE_HASH('F', hash(asCanon(FT->getReturnType())));
+    Hash = hash_combine(Hash, 'F', hash(asCanon(FT->getReturnType())));
     for (const auto &I : FT->param_types())
-      COMBINE_HASH(hash(asCanon(I)));
-    return COMBINE_HASH(FT->isVariadic());
+      Hash = hash_combine(Hash, hash(asCanon(I)));
+    return hash_combine(Hash, FT->isVariadic());
   }
   if (const ComplexType *CT = dyn_cast<ComplexType>(T)) {
-    return COMBINE_HASH('<', hash(asCanon(CT->getElementType())));
+    return hash_combine(Hash, '<', hash(asCanon(CT->getElementType())));
   }
   if (const TemplateSpecializationType *Spec
       = dyn_cast<TemplateSpecializationType>(T)) {
-    COMBINE_HASH('>', computeHash(Spec->getTemplateName(), *this));
+    Hash = hash_combine(Hash, '>', computeHash(Spec->getTemplateName(), *this));
     for (unsigned I = 0, N = Spec->getNumArgs(); I != N; ++I)
-      COMBINE_HASH(computeHash(Spec->getArg(I), *this));
+      Hash = hash_combine(Hash, computeHash(Spec->getArg(I), *this));
     return Hash;
   }
   if (const DependentNameType *DNT = dyn_cast<DependentNameType>(T)) {
-    COMBINE_HASH('^');
+    Hash = hash_combine(Hash, '^');
     if (const NestedNameSpecifier *NNS = DNT->getQualifier())
-      COMBINE_HASH(hash(NNS));
-    return COMBINE_HASH(computeHash(DNT->getIdentifier()));
+      Hash = hash_combine(Hash, hash(NNS));
+    return hash_combine(Hash, computeHash(DNT->getIdentifier()));
   }
 
   // Unhandled type.
@@ -409,32 +408,32 @@ hash_code IndexRecordHasher::hashImpl(CanQualType CQT) {
 }
 
 hash_code IndexRecordHasher::hashImpl(DeclarationName Name) {
-  hash_code Hash = INITIAL_HASH;
-  COMBINE_HASH(Name.getNameKind());
+  hash_code Hash = InitialHash;
+  Hash = hash_combine(Hash, Name.getNameKind());
 
   switch (Name.getNameKind()) {
     case DeclarationName::Identifier:
-      COMBINE_HASH(computeHash(Name.getAsIdentifierInfo()));
+      Hash = hash_combine(Hash, computeHash(Name.getAsIdentifierInfo()));
       break;
     case DeclarationName::ObjCZeroArgSelector:
     case DeclarationName::ObjCOneArgSelector:
     case DeclarationName::ObjCMultiArgSelector:
-      COMBINE_HASH(computeHash(Name.getObjCSelector()));
+      Hash = hash_combine(Hash, computeHash(Name.getObjCSelector()));
       break;
     case DeclarationName::CXXConstructorName:
     case DeclarationName::CXXDestructorName:
     case DeclarationName::CXXConversionFunctionName:
       break;
     case DeclarationName::CXXOperatorName:
-      COMBINE_HASH(Name.getCXXOverloadedOperator());
+      Hash = hash_combine(Hash, Name.getCXXOverloadedOperator());
       break;
     case DeclarationName::CXXLiteralOperatorName:
-      COMBINE_HASH(computeHash(Name.getCXXLiteralIdentifier()));
+      Hash = hash_combine(Hash, computeHash(Name.getCXXLiteralIdentifier()));
       break;
     case DeclarationName::CXXUsingDirective:
       break;
     case DeclarationName::CXXDeductionGuideName:
-      COMBINE_HASH(computeHash(Name.getCXXDeductionGuideTemplate()
+      Hash = hash_combine(Hash, computeHash(Name.getCXXDeductionGuideTemplate()
                  ->getDeclName().getAsIdentifierInfo()));
       break;
   }
@@ -443,23 +442,23 @@ hash_code IndexRecordHasher::hashImpl(DeclarationName Name) {
 }
 
 hash_code IndexRecordHasher::hashImpl(const NestedNameSpecifier *NNS) {
-  hash_code Hash = INITIAL_HASH;
+  hash_code Hash = InitialHash;
   if (auto *Pre = NNS->getPrefix())
-    COMBINE_HASH(hash(Pre));
+    Hash = hash_combine(Hash, hash(Pre));
 
-  COMBINE_HASH(NNS->getKind());
+  Hash = hash_combine(Hash, NNS->getKind());
 
   switch (NNS->getKind()) {
   case NestedNameSpecifier::Identifier:
-    COMBINE_HASH(computeHash(NNS->getAsIdentifier()));
+    Hash = hash_combine(Hash, computeHash(NNS->getAsIdentifier()));
     break;
 
   case NestedNameSpecifier::Namespace:
-    COMBINE_HASH(hash(NNS->getAsNamespace()->getCanonicalDecl()));
+    Hash = hash_combine(Hash, hash(NNS->getAsNamespace()->getCanonicalDecl()));
     break;
 
   case NestedNameSpecifier::NamespaceAlias:
-    COMBINE_HASH(hash(NNS->getAsNamespaceAlias()->getCanonicalDecl()));
+    Hash = hash_combine(Hash, hash(NNS->getAsNamespaceAlias()->getCanonicalDecl()));
     break;
 
   case NestedNameSpecifier::Global:
@@ -472,7 +471,7 @@ hash_code IndexRecordHasher::hashImpl(const NestedNameSpecifier *NNS) {
     // Fall through to hash the type.
 
   case NestedNameSpecifier::TypeSpec:
-    COMBINE_HASH(hash(QualType(NNS->getAsType(), 0)));
+    Hash = hash_combine(Hash, hash(QualType(NNS->getAsType(), 0)));
     break;
   }
 

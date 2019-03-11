@@ -27,6 +27,8 @@ namespace clang {
 namespace index {
   class FileIndexRecord;
 
+/// Implements hashing of AST nodes suitable for the index.
+/// Caching all produced hashes.
 class IndexRecordHasher {
   ASTContext &Ctx;
   llvm::DenseMap<const void *, llvm::hash_code> HashByPtr;
@@ -35,6 +37,7 @@ public:
   explicit IndexRecordHasher(ASTContext &Ctx) : Ctx(Ctx) {}
   ASTContext &getASTContext() { return Ctx; }
 
+  /// Returns hash for all declaration occurences in \c Record.
   llvm::hash_code hashRecord(const FileIndexRecord &Record);
   llvm::hash_code hash(const Decl *D);
   llvm::hash_code hash(QualType Ty);

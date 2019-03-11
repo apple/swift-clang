@@ -41,8 +41,7 @@ StringRef ClangIndexRecordWriter::getUSRNonCached(const Decl *D) {
 
 ClangIndexRecordWriter::ClangIndexRecordWriter(ASTContext &Ctx,
                                                RecordingOptions Opts)
-    : Impl(Opts.DataDirPath), Ctx(Ctx), RecordOpts(std::move(Opts)),
-      Hasher(Ctx) {
+    : Impl(Opts.DataDirPath), Ctx(Ctx), RecordOpts(std::move(Opts)) {
   if (Opts.RecordSymbolCodeGenName)
     CGNameGen.reset(new CodegenNameGenerator(Ctx));
 }
@@ -54,7 +53,8 @@ bool ClangIndexRecordWriter::writeRecord(StringRef Filename,
                                          std::string &Error,
                                          std::string *OutRecordFile) {
 
-  auto RecordHash = Hasher.hashRecord(IdxRecord);
+  ASTContext &Ctx = getASTContext();
+  auto RecordHash = hashRecord(Ctx, IdxRecord);
 
   switch (Impl.beginRecord(Filename, RecordHash, Error, OutRecordFile)) {
   case IndexRecordWriter::Result::Success:
@@ -65,7 +65,6 @@ bool ClangIndexRecordWriter::writeRecord(StringRef Filename,
     return false;
   }
 
-  ASTContext &Ctx = getASTContext();
   SourceManager &SM = Ctx.getSourceManager();
   FileID FID = IdxRecord.getFileID();
   auto getLineCol = [&](unsigned Offset) -> std::pair<unsigned, unsigned> {

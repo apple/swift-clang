@@ -48,7 +48,8 @@ public:
 
       hash_code Hash = VisitDeclContext(D->getDeclContext());
       if (D->isEmbeddedInDeclarator() && !D->isFreeStanding()) {
-        Hash = hash_combine(Hash, hashLoc(D->getLocation(), /*IncludeOffset=*/true));
+        Hash = hash_combine(Hash,
+                            hashLoc(D->getLocation(), /*IncludeOffset=*/true));
       } else
         Hash = hash_combine(Hash, 'a');
       return Hash;
@@ -340,7 +341,8 @@ static hash_code computeHash(const TemplateArgument &Arg,
     Hash = hash_combine(Hash, 'P'); // pack expansion of...
     LLVM_FALLTHROUGH;
   case TemplateArgument::Template:
-    Hash = hash_combine(Hash, computeHash(Arg.getAsTemplateOrTemplatePattern(), Hasher));
+    Hash = hash_combine(
+        Hash, computeHash(Arg.getAsTemplateOrTemplatePattern(), Hasher));
     break;
       
   case TemplateArgument::Expression:
@@ -358,7 +360,8 @@ static hash_code computeHash(const TemplateArgument &Arg,
     break;
       
   case TemplateArgument::Integral:
-    Hash = hash_combine(Hash, 'V', Hasher.hash(Arg.getIntegralType()), Arg.getAsIntegral());
+    Hash = hash_combine(Hash, 'V', Hasher.hash(Arg.getIntegralType()),
+                        Arg.getAsIntegral());
     break;
   }
 
@@ -434,7 +437,8 @@ hash_code IndexRecordHasher::hashImpl(DeclarationName Name) {
       break;
     case DeclarationName::CXXDeductionGuideName:
       Hash = hash_combine(Hash, computeHash(Name.getCXXDeductionGuideTemplate()
-                 ->getDeclName().getAsIdentifierInfo()));
+                                                ->getDeclName()
+                                                .getAsIdentifierInfo()));
       break;
   }
 
@@ -458,7 +462,8 @@ hash_code IndexRecordHasher::hashImpl(const NestedNameSpecifier *NNS) {
     break;
 
   case NestedNameSpecifier::NamespaceAlias:
-    Hash = hash_combine(Hash, hash(NNS->getAsNamespaceAlias()->getCanonicalDecl()));
+    Hash = hash_combine(Hash,
+                        hash(NNS->getAsNamespaceAlias()->getCanonicalDecl()));
     break;
 
   case NestedNameSpecifier::Global:

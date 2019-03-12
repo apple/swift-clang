@@ -13,4 +13,3 @@ add_clang_library(clangIndexRecordHasher
   clangAST
   clangBasic
   )
-  

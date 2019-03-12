@@ -200,21 +200,21 @@ hash_code CachingHasher::hashImpl(const TemplateArgument &Arg) {
   case TemplateArgument::Template:
     Hash = hash_combine(Hash, hashImpl(Arg.getAsTemplateOrTemplatePattern()));
     break;
-      
+
   case TemplateArgument::Expression:
     // FIXME: Hash expressions.
     break;
-      
+
   case TemplateArgument::Pack:
     Hash = hash_combine(Hash, 'p');
     for (const auto &P : Arg.pack_elements())
       Hash = hash_combine(Hash, hashImpl(P));
     break;
-      
+
   case TemplateArgument::Type:
     Hash = hash_combine(Hash, hash(Arg.getAsType()));
     break;
-      
+
   case TemplateArgument::Integral:
     Hash = hash_combine(Hash, 'V', hash(Arg.getIntegralType()),
                         Arg.getAsIntegral());

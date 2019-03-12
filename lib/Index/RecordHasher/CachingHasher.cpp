@@ -25,8 +25,8 @@ hash_code CachingHasher::hash(const Decl *D) {
     return getCachedHash(D, D);
   } else {
     // There's a balance between caching results and not growing the cache too
-    // much. Measurements showed that avoiding caching all decls is beneficial
-    // particularly when including all of Cocoa.
+    // much. Measurements showed that avoiding caching hashes for all decls is
+    // beneficial particularly when including all of Cocoa.
     return hashImpl(D);
   }
 }
@@ -40,10 +40,6 @@ hash_code CachingHasher::hash(CanQualType CT) {
   // Do some hashing without going to the cache, for example we can avoid
   // storing the hash for both the type and its const-qualified version.
   hash_code Hash = InitialHash;
-
-  auto asCanon = [](QualType Ty) -> CanQualType {
-    return CanQualType::CreateUnsafe(Ty);
-  };
 
   while (true) {
     Qualifiers Q = CT.getQualifiers();
@@ -59,29 +55,29 @@ hash_code CachingHasher::hash(CanQualType CT) {
     if(qVal)
       Hash = hash_combine(Hash, qVal);
 
-    // Hash in ObjC GC qualifiers?
+    // FIXME: Hash in ObjC GC qualifiers
 
     if (const BuiltinType *BT = dyn_cast<BuiltinType>(T)) {
       return hash_combine(Hash, BT->getKind());
     }
     if (const PointerType *PT = dyn_cast<PointerType>(T)) {
       Hash = hash_combine(Hash, '*');
-      CT = asCanon(PT->getPointeeType());
+      CT = CanQualType::CreateUnsafe(PT->getPointeeType());
       continue;
     }
     if (const ReferenceType *RT = dyn_cast<ReferenceType>(T)) {
       Hash = hash_combine(Hash, '&');
-      CT = asCanon(RT->getPointeeType());
+      CT = CanQualType::CreateUnsafe(RT->getPointeeType());
       continue;
     }
     if (const BlockPointerType *BT = dyn_cast<BlockPointerType>(T)) {
       Hash = hash_combine(Hash, 'B');
-      CT = asCanon(BT->getPointeeType());
+      CT = CanQualType::CreateUnsafe(BT->getPointeeType());
       continue;
     }
     if (const ObjCObjectPointerType *OPT = dyn_cast<ObjCObjectPointerType>(T)) {
       Hash = hash_combine(Hash, '*');
-      CT = asCanon(OPT->getPointeeType());
+      CT = CanQualType::CreateUnsafe(OPT->getPointeeType());
       continue;
     }
     if (const TagType *TT = dyn_cast<TagType>(T)) {
@@ -93,14 +89,14 @@ hash_code CachingHasher::hash(CanQualType CT) {
     if (const ObjCObjectType *OIT = dyn_cast<ObjCObjectType>(T)) {
       for (auto *Prot : OIT->getProtocols())
         Hash = hash_combine(Hash, hash(Prot));
-      CT = asCanon(OIT->getBaseType());
+      CT = CanQualType::CreateUnsafe(OIT->getBaseType());
       continue;
     }
     if (const TemplateTypeParmType *TTP = dyn_cast<TemplateTypeParmType>(T)) {
       return hash_combine(Hash, 't', TTP->getDepth(), TTP->getIndex());
     }
     if (const InjectedClassNameType *InjT = dyn_cast<InjectedClassNameType>(T)) {
-      CT = asCanon(InjT->getInjectedSpecializationType().getCanonicalType());
+      CT = CanQualType::CreateUnsafe(InjT->getInjectedSpecializationType().getCanonicalType());
       continue;
     }
 
@@ -329,8 +325,6 @@ hash_code CachingHasher::hashImpl(const NestedNameSpecifier *NNS) {
     break;
 
   case NestedNameSpecifier::TypeSpecWithTemplate:
-    // Fall through to hash the type.
-
   case NestedNameSpecifier::TypeSpec:
     Hash = hash_combine(Hash, hash(QualType(NNS->getAsType(), 0)));
     break;

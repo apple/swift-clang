@@ -516,6 +516,7 @@ StringRef index::getSymbolSubKindString(SymbolSubKind K) {
   case SymbolSubKind::SwiftPrefixOperator: return "prefix-operator";
   case SymbolSubKind::SwiftPostfixOperator: return "postfix-operator";
   case SymbolSubKind::SwiftInfixOperator: return "infix-operator";
+  case SymbolSubKind::SwiftCall: return "call";
   case SymbolSubKind::SwiftSubscript: return "subscript";
   case SymbolSubKind::SwiftAssociatedType: return "associated-type";
   case SymbolSubKind::SwiftGenericTypeParam: return "generic-type-param";

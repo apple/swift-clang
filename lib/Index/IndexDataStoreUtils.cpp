@@ -386,6 +386,8 @@ indexstore_symbol_subkind_t index::getIndexStoreSubKind(SymbolSubKind K) {
     return INDEXSTORE_SYMBOL_SUBKIND_SWIFTINFIXOPERATOR;
   case SymbolSubKind::SwiftSubscript:
     return INDEXSTORE_SYMBOL_SUBKIND_SWIFTSUBSCRIPT;
+  case SymbolSubKind::SwiftCall:
+    return INDEXSTORE_SYMBOL_SUBKIND_SWIFTCALL;
   case SymbolSubKind::SwiftAssociatedType:
     return INDEXSTORE_SYMBOL_SUBKIND_SWIFTASSOCIATEDTYPE;
   case SymbolSubKind::SwiftGenericTypeParam:

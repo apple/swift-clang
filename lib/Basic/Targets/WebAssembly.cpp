@@ -60,6 +60,8 @@ void WebAssemblyTargetInfo::fillValidCPUList(
 void WebAssemblyTargetInfo::getTargetDefines(const LangOptions &Opts,
                                              MacroBuilder &Builder) const {
   defineCPUMacros(Builder, "wasm", /*Tuning=*/false);
+  // HACK: too lazy to backport the -emscripten target here
+  Builder.defineMacro("__EMSCRIPTEN__");
   if (SIMDLevel >= SIMD128)
     Builder.defineMacro("__wasm_simd128__");
   if (SIMDLevel >= UnimplementedSIMD128)

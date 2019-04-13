@@ -60,8 +60,10 @@ void WebAssemblyTargetInfo::fillValidCPUList(
 void WebAssemblyTargetInfo::getTargetDefines(const LangOptions &Opts,
                                              MacroBuilder &Builder) const {
   defineCPUMacros(Builder, "wasm", /*Tuning=*/false);
-  // HACK: too lazy to backport the -emscripten target here
-  Builder.defineMacro("__EMSCRIPTEN__");
+  // HACK: too lazy to backport the WASI target here
+  Builder.defineMacro("__wasi__");
+  // HACK: globally enable WASI mmap emulation
+  Builder.defineMacro("_WASI_EMULATED_MMAN");
   if (SIMDLevel >= SIMD128)
     Builder.defineMacro("__wasm_simd128__");
   if (SIMDLevel >= UnimplementedSIMD128)

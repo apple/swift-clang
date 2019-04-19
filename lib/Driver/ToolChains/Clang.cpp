@@ -448,6 +448,9 @@ static void addExceptionArgs(const ArgList &Args, types::ID InputType,
     // Disable C++ EH by default on XCore and PS4.
     bool CXXExceptionsEnabled =
         Triple.getArch() != llvm::Triple::xcore && !Triple.isPS4CPU();
+    // WebAssembly: no exception handling on WASI
+    if (Triple.isOSBinFormatWasm())
+      CXXExceptionsEnabled = false;
     Arg *ExceptionArg = Args.getLastArg(
         options::OPT_fcxx_exceptions, options::OPT_fno_cxx_exceptions,
         options::OPT_fexceptions, options::OPT_fno_exceptions);

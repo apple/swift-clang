@@ -1,9 +1,8 @@
 //===- unittests/DirectoryWatcher/DirectoryWatcherTest.cpp ----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,10 +47,10 @@ public:
     for (unsigned i = 0, e = filenames.size(); i < e; ++i) {
       StringRef fname = filenames[i];
       DirectoryWatcher::EventKind kind = kinds[i];
-      file_status stat = stats[i];
-      auto it = std::find_if(evts.begin(), evts.end(), [&](const DirectoryWatcher::Event &evt)->bool {
-        return path::filename(evt.Filename) == fname;
-      });
+      auto it = std::find_if(evts.begin(), evts.end(),
+                             [&](const DirectoryWatcher::Event &evt) -> bool {
+                               return path::filename(evt.Filename) == fname;
+                             });
       if (it == evts.end()) {
         hadError = err(Twine("expected filename '"+fname+"' not found"));
         continue;
@@ -61,9 +60,6 @@ public:
                              std::to_string((int)it->Kind) + ", expected ") +
                        std::to_string((int)kind));
       }
-      if (it->Kind != DirectoryWatcher::EventKind::Removed &&
-          it->ModTime != stat.getLastModificationTime())
-        hadError = err(Twine("filename '"+fname+"' has different mod time"));
       evts.erase(it);
     }
     for (const auto &evt : evts) {

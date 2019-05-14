@@ -229,7 +229,6 @@ void Command::Print(raw_ostream &OS, const char *Terminator, bool Quote,
   }
 
   bool HaveCrashVFS = CrashInfo && !CrashInfo->VFSPath.empty();
-  bool HaveIndexStorePath = CrashInfo && !CrashInfo->IndexStorePath.empty();
   for (size_t i = 0, e = Args.size(); i < e; ++i) {
     const char *const Arg = Args[i];
 
@@ -293,7 +292,7 @@ void Command::Print(raw_ostream &OS, const char *Terminator, bool Quote,
     printArg(OS, ModCachePath, Quote);
   }
 
-  if (CrashInfo && HaveIndexStorePath) {
+  if (CrashInfo && CrashInfo->HaveIndexStorePath) {
     SmallString<128> IndexStoreDir;
 
     if (HaveCrashVFS) {

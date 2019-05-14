@@ -31,11 +31,12 @@ class Tool;
 struct CrashReportInfo {
   StringRef Filename;
   StringRef VFSPath;
-  StringRef IndexStorePath;
+  bool HaveIndexStorePath;
 
   CrashReportInfo(StringRef Filename, StringRef VFSPath,
-                  StringRef IndexStorePath)
-      : Filename(Filename), VFSPath(VFSPath), IndexStorePath(IndexStorePath) {}
+                  bool HaveIndexStorePath)
+      : Filename(Filename), VFSPath(VFSPath),
+        HaveIndexStorePath(HaveIndexStorePath) {}
 };
 
 /// Command - An executable path/name and argument vector to

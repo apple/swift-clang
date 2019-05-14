@@ -14,6 +14,12 @@
 // RUN: %clang -fsyntax-only %s -index-store-path %t/index \
 // RUN:     2>&1 | FileCheck --check-prefix=CHECK %s
 // RUN: FileCheck --check-prefix=CHECKSH %s -input-file %t/crash-index-*.sh
+
+// Turn on indexing with an environment variable.
+// RUN: rm -rf %t
+// RUN: not env FORCE_CLANG_DIAGNOSTICS_CRASH= TMPDIR=%t TEMP=%t TMP=%t CLANG_PROJECT_INDEX_PATH=%t/index \
+// RUN: %clang -fsyntax-only %s 2>&1 | FileCheck --check-prefix=CHECK %s
+// RUN: FileCheck --check-prefix=CHECKSH %s -input-file %t/crash-index-*.sh
 int foo() { return 0; }
 
 // CHECKMOD: Preprocessed source(s) and associated run script(s) are located at:

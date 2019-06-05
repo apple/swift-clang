@@ -36,18 +36,6 @@ static indexstore_string_ref_t toIndexStoreString(StringRef str) {
   return indexstore_string_ref_t{ str.data(), str.size() };
 }
 
-static timespec toTimeSpec(sys::TimePoint<> tp) {
-  std::chrono::seconds sec = std::chrono::time_point_cast<std::chrono::seconds>(
-                 tp).time_since_epoch();
-  std::chrono::nanoseconds nsec =
-    std::chrono::time_point_cast<std::chrono::nanoseconds>(tp - sec)
-      .time_since_epoch();
-  timespec ts;
-  ts.tv_sec = sec.count();
-  ts.tv_nsec = nsec.count();
-  return ts;
-}
-
 //===----------------------------------------------------------------------===//
 // Fatal error handling
 //===----------------------------------------------------------------------===//
@@ -180,12 +168,6 @@ indexstore_string_ref_t
 indexstore_unit_event_get_unit_name(indexstore_unit_event_t c_evt) {
   auto *evt = static_cast<IndexDataStore::UnitEvent*>(c_evt);
   return toIndexStoreString(evt->UnitName);
-}
-
-timespec
-indexstore_unit_event_get_modification_time(indexstore_unit_event_t c_evt) {
-  auto *evt = static_cast<IndexDataStore::UnitEvent*>(c_evt);
-  return toTimeSpec(evt->ModTime);
 }
 
 #if INDEXSTORE_HAS_BLOCKS
@@ -596,32 +578,6 @@ indexstore_store_get_unit_name_from_output_path(indexstore_t store,
   return nameLen;
 }
 
-bool
-indexstore_store_get_unit_modification_time(indexstore_t c_store,
-                                            const char *unit_name,
-                                            int64_t *seconds,
-                                            int64_t *nanoseconds,
-                                            indexstore_error_t *c_error) {
-  IndexDataStore *store = static_cast<IndexDataStore*>(c_store);
-  std::string error;
-  // FIXME: This provides mod time with second-only accuracy.
-  auto optModTime = IndexUnitReader::getModificationTimeForUnit(unit_name,
-                                              store->getFilePath(), error);
-  if (!optModTime) {
-    if (c_error)
-      *c_error = new IndexStoreError{ error };
-    return true;
-  }
-
-  timespec ts = toTimeSpec(*optModTime);
-  if (seconds)
-    *seconds = ts.tv_sec;
-  if (nanoseconds)
-    *nanoseconds = ts.tv_nsec;
-
-  return false;
-}
-
 indexstore_unit_reader_t
 indexstore_unit_reader_create(indexstore_t c_store, const char *unit_name,
                               indexstore_error_t *c_error) {
@@ -654,20 +610,6 @@ indexstore_string_ref_t
 indexstore_unit_reader_get_provider_version(indexstore_unit_reader_t rdr) {
   auto reader = static_cast<IndexUnitReader*>(rdr);
   return toIndexStoreString(reader->getProviderVersion());
-}
-
-void
-indexstore_unit_reader_get_modification_time(indexstore_unit_reader_t rdr,
-                                             int64_t *seconds,
-                                             int64_t *nanoseconds) {
-  auto reader = static_cast<IndexUnitReader*>(rdr);
-  // FIXME: This provides mod time with second-only accuracy.
-  sys::TimePoint<> timeVal = reader->getModificationTime();
-  timespec ts = toTimeSpec(timeVal);
-  if (seconds)
-    *seconds = ts.tv_sec;
-  if (nanoseconds)
-    *nanoseconds = ts.tv_nsec;
 }
 
 bool

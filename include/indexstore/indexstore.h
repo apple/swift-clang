@@ -17,7 +17,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <time.h>
 
 /**
  * \brief The version constants for the Index Store C API.
@@ -146,9 +145,6 @@ indexstore_unit_event_get_kind(indexstore_unit_event_t);
 INDEXSTORE_PUBLIC indexstore_string_ref_t
 indexstore_unit_event_get_unit_name(indexstore_unit_event_t);
 
-INDEXSTORE_PUBLIC struct timespec
-indexstore_unit_event_get_modification_time(indexstore_unit_event_t);
-
 #if INDEXSTORE_HAS_BLOCKS
 typedef void (^indexstore_unit_event_handler_t)(indexstore_unit_event_notification_t);
 
@@ -196,14 +192,6 @@ indexstore_store_get_unit_name_from_output_path(indexstore_t store,
                                                 const char *output_path,
                                                 char *name_buf,
                                                 size_t buf_size);
-
-/// \returns true if an error occurred, false otherwise.
-INDEXSTORE_PUBLIC bool
-indexstore_store_get_unit_modification_time(indexstore_t store,
-                                            const char *unit_name,
-                                            int64_t *seconds,
-                                            int64_t *nanoseconds,
-                                            indexstore_error_t *error);
 
 typedef void *indexstore_symbol_t;
 

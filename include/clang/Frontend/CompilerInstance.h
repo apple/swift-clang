@@ -12,6 +12,8 @@
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/Basic/Diagnostic.h"
+// SWIFT_ENABLE_TENSORFLOW
+#include "clang/Basic/InMemoryOutputFileSystem.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/PCHContainerOperations.h"
@@ -192,6 +194,11 @@ class CompilerInstance : public ModuleLoader {
 
   /// Force an output buffer.
   std::unique_ptr<llvm::raw_pwrite_stream> OutputStream;
+
+  // SWIFT_ENABLE_TENSORFLOW
+  /// If defined, outputs will be written here instead of to the real
+  /// filesystem.
+  IntrusiveRefCntPtr<InMemoryOutputFileSystem> InMemoryOutputFileSystem;
 
   CompilerInstance(const CompilerInstance &) = delete;
   void operator=(const CompilerInstance &) = delete;
@@ -410,6 +417,19 @@ public:
   /// the virtual file system to the one contained in the file manager.
   void setVirtualFileSystem(IntrusiveRefCntPtr<llvm::vfs::FileSystem> FS) {
     VirtualFileSystem = std::move(FS);
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  /// }
+  /// @name In-Memory Output File System
+  /// {
+
+  IntrusiveRefCntPtr<clang::InMemoryOutputFileSystem> getInMemoryOutputFileSystem() const {
+    return InMemoryOutputFileSystem;
+  }
+
+  void setInMemoryOutputFileSystem(IntrusiveRefCntPtr<clang::InMemoryOutputFileSystem> FS) {
+    InMemoryOutputFileSystem = std::move(FS);
   }
 
   /// }

@@ -78,15 +78,40 @@ struct DepCollectorPPCallbacks : public PPCallbacks {
 
 struct DepCollectorMMCallbacks : public ModuleMapCallbacks {
   DependencyCollector &DepCollector;
-  DepCollectorMMCallbacks(DependencyCollector &DC) : DepCollector(DC) {}
 
-  void moduleMapFileRead(SourceLocation Loc, const FileEntry &Entry,
-                         bool IsSystem) override {
+  /// Determines which callback to listen to.
+  /// - If this is \c true, then modulemaps will only be added as a dependency
+  ///   when their module is loaded during compilation, which means a
+  ///   dependency is only added when \c moduleMapFoundForModule is called.
+  /// - Otherwise, every module map that is read during compilation is added,
+  ///   which means a dependency is only added when \c moduleMapFileRead is
+  ///   called.
+  bool SkipUnusedModuleMaps;
+
+  DepCollectorMMCallbacks(DependencyCollector &DC,
+                          bool SkipUnusedModuleMaps = false)
+      : DepCollector(DC), SkipUnusedModuleMaps(SkipUnusedModuleMaps) {}
+
+  /// Adds the provided file entry as a dependency in the dependency collector.
+  ///
+  void addDependency(const FileEntry &Entry, bool IsSystem) {
     StringRef Filename = Entry.getName();
     DepCollector.maybeAddDependency(Filename, /*FromModule*/false,
                                     /*IsSystem*/IsSystem,
                                     /*IsModuleFile*/false,
                                     /*IsMissing*/false);
+  }
+
+  void moduleMapFoundForModule(const FileEntry &File, const Module *M,
+                               bool IsSystem) override {
+    if (SkipUnusedModuleMaps)
+      addDependency(File, IsSystem);
+  }
+
+  void moduleMapFileRead(SourceLocation Loc, const FileEntry &File,
+                         bool IsSystem) override {
+    if (!SkipUnusedModuleMaps)
+      addDependency(File, IsSystem);
   }
 };
 
@@ -138,11 +163,13 @@ bool DependencyCollector::sawDependency(StringRef Filename, bool FromModule,
 }
 
 DependencyCollector::~DependencyCollector() { }
-void DependencyCollector::attachToPreprocessor(Preprocessor &PP) {
+void DependencyCollector::attachToPreprocessor(
+    Preprocessor &PP, const DependencyOutputOptions &Opts) {
   PP.addPPCallbacks(
       llvm::make_unique<DepCollectorPPCallbacks>(*this, PP.getSourceManager()));
   PP.getHeaderSearchInfo().getModuleMap().addModuleMapCallbacks(
-      llvm::make_unique<DepCollectorMMCallbacks>(*this));
+      llvm::make_unique<DepCollectorMMCallbacks>(*this,
+                                                 Opts.SkipUnusedModuleMaps));
 }
 void DependencyCollector::attachToASTReader(ASTReader &R) {
   R.addListener(llvm::make_unique<DepCollectorASTListener>(*this));

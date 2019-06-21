@@ -121,7 +121,8 @@ void ModuleDependencyCollector::attachToASTReader(ASTReader &R) {
   R.addListener(llvm::make_unique<ModuleDependencyListener>(*this));
 }
 
-void ModuleDependencyCollector::attachToPreprocessor(Preprocessor &PP) {
+void ModuleDependencyCollector::attachToPreprocessor(
+    Preprocessor &PP, const DependencyOutputOptions &Opts) {
   PP.addPPCallbacks(llvm::make_unique<ModuleDependencyPPCallbacks>(
       *this, PP.getSourceManager()));
   PP.getHeaderSearchInfo().getModuleMap().addModuleMapCallbacks(

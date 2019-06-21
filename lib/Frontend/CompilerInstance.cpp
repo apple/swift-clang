@@ -443,7 +443,7 @@ void CompilerInstance::createPreprocessor(TranslationUnitKind TUKind) {
   }
 
   for (auto &Listener : DependencyCollectors)
-    Listener->attachToPreprocessor(*PP);
+    Listener->attachToPreprocessor(*PP, DepOpts);
 
   // Handle generating header include information, if requested.
   if (DepOpts.ShowHeaderIncludes)

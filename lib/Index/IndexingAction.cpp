@@ -433,8 +433,9 @@ public:
                                       RecordingOptions recordOpts)
       : IndexCtx(indexCtx), RecordOpts(recordOpts) {}
 
-  virtual void attachToPreprocessor(Preprocessor &PP) override {
-    DependencyCollector::attachToPreprocessor(PP);
+  virtual void attachToPreprocessor(
+      Preprocessor &PP, const DependencyOutputOptions &Opts) override {
+    DependencyCollector::attachToPreprocessor(PP, Opts);
     PP.addPPCallbacks(llvm::make_unique<IncludePPCallbacks>(
         IndexCtx, RecordOpts, Includes, PP.getSourceManager()));
   }
@@ -538,7 +539,7 @@ protected:
     Preprocessor &PP = CI.getPreprocessor();
     DepCollector.setSourceManager(&CI.getSourceManager());
     DepCollector.setSysrootPath(IndexCtx->getSysrootPath());
-    DepCollector.attachToPreprocessor(PP);
+    DepCollector.attachToPreprocessor(PP, CI.getDependencyOutputOpts());
 
     return llvm::make_unique<IndexASTConsumer>(CI.getPreprocessorPtr(),
                                                IndexCtx);

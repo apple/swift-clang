@@ -84,7 +84,8 @@ class DependencyCollector {
 public:
   virtual ~DependencyCollector();
 
-  virtual void attachToPreprocessor(Preprocessor &PP);
+  virtual void attachToPreprocessor(Preprocessor &PP,
+                                    const DependencyOutputOptions &Opts);
   virtual void attachToASTReader(ASTReader &R);
   ArrayRef<std::string> getDependencies() const { return Dependencies; }
 
@@ -153,7 +154,8 @@ public:
     VFSWriter.addFileMapping(VPath, RPath);
   }
 
-  void attachToPreprocessor(Preprocessor &PP) override;
+  void attachToPreprocessor(Preprocessor &PP,
+                            const DependencyOutputOptions &Opts) override;
   void attachToASTReader(ASTReader &R) override;
 
   virtual void writeFileMap();

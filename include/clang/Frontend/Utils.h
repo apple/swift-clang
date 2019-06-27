@@ -101,6 +101,10 @@ public:
   /// Return true if system files should be passed to sawDependency().
   virtual bool needSystemDependencies() { return false; }
 
+  void registerCallback(std::function<void(StringRef)> C) {
+    Callback = C;
+  }
+
   // implementation detail
   /// Add a dependency \p Filename if it has not been seen before and
   /// sawDependency() returns true.
@@ -110,6 +114,7 @@ public:
 private:
   llvm::StringSet<> Seen;
   std::vector<std::string> Dependencies;
+  std::function<void(StringRef)> Callback;
 };
 
 /// Builds a depdenency file when attached to a Preprocessor (for includes) and

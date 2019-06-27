@@ -119,8 +119,11 @@ void DependencyCollector::maybeAddDependency(StringRef Filename, bool FromModule
                                             bool IsSystem, bool IsModuleFile,
                                             bool IsMissing) {
   if (Seen.insert(Filename).second &&
-      sawDependency(Filename, FromModule, IsSystem, IsModuleFile, IsMissing))
+      sawDependency(Filename, FromModule, IsSystem, IsModuleFile, IsMissing)) {
     Dependencies.push_back(Filename);
+    if (Callback)
+      Callback(Filename);
+  }
 }
 
 static bool isSpecialFilename(StringRef Filename) {

@@ -36,16 +36,15 @@ public:
   static unsigned getFormatVersion();
 
   enum class UnitEventKind {
-    Added,
     Removed,
     Modified,
     /// The directory got deleted. No more events will follow.
     DirectoryDeleted,
+    Failure
   };
   struct UnitEvent {
     UnitEventKind Kind;
     StringRef UnitName;
-    llvm::sys::TimePoint<> ModTime;
   };
   struct UnitEventNotification {
     bool IsInitial;

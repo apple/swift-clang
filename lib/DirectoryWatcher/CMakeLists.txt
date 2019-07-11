@@ -22,6 +22,6 @@ endif()
 
 add_clang_library(clangDirectoryWatcher
   ${DIRECTORY_WATCHER_SOURCES}
+  LINK_LIBS
+  ${DIRECTORY_WATCHER_LINK_LIBS}
   )
-
-target_link_libraries(clangDirectoryWatcher PRIVATE ${DIRECTORY_WATCHER_LINK_LIBS})

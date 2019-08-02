@@ -1,5 +1,5 @@
 // REQUIRES: x86-registered-target
-// RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -O1 -fmerge-functions -emit-llvm -o - -x c++ < %s | FileCheck %s
+// RUN: %clang_cc1 -triple x86_64-pc-linux-gnu -O1 -fmerge-functions -fmerge-similar-functions -emit-llvm -o - -x c++ < %s | FileCheck %s
 
 // Basic functionality test. Function merging doesn't kick in on functions that
 // are too simple.

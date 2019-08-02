@@ -535,6 +535,7 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
 
   PMBuilder.DisableUnrollLoops = !CodeGenOpts.UnrollLoops;
   PMBuilder.MergeFunctions = CodeGenOpts.MergeFunctions;
+  PMBuilder.MergeSimilarFunctions = CodeGenOpts.MergeSimilarFunctions;
   PMBuilder.PrepareForThinLTO = CodeGenOpts.PrepareForThinLTO;
   PMBuilder.PrepareForLTO = CodeGenOpts.PrepareForLTO;
   PMBuilder.RerollLoops = CodeGenOpts.RerollLoops;

@@ -66,6 +66,9 @@ const CGFunctionInfo &arrangeCXXMethodType(CodeGenModule &CGM,
                                            const FunctionProtoType *FTP,
                                            const CXXMethodDecl *MD);
 
+const CGFunctionInfo &arrangeCXXMethodDeclaration(CodeGenModule &CGM,
+                                                  const CXXMethodDecl *MD);
+
 const CGFunctionInfo &arrangeFreeFunctionCall(CodeGenModule &CGM,
                                               CanQualType returnType,
                                               ArrayRef<CanQualType> argTypes,
@@ -75,6 +78,9 @@ const CGFunctionInfo &arrangeFreeFunctionCall(CodeGenModule &CGM,
 /// Returns null if the function type is incomplete and can't be lowered.
 llvm::FunctionType *convertFreeFunctionType(CodeGenModule &CGM,
                                             const FunctionDecl *FD);
+
+llvm::FunctionType *getFunctionType(CodeGenModule &CGM,
+                                    const CGFunctionInfo &FI);
 
 llvm::Type *convertTypeForMemory(CodeGenModule &CGM, QualType T);
 

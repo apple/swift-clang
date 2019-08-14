@@ -12,9 +12,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/CodeGen/SwiftCallingConv.h"
-#include "clang/Basic/TargetInfo.h"
+#include "CGCXXABI.h"
+#include "CodeGenFunction.h"
 #include "CodeGenModule.h"
 #include "TargetInfo.h"
+#include "clang/Basic/TargetInfo.h"
 
 using namespace clang;
 using namespace CodeGen;
@@ -862,4 +864,26 @@ void swiftcall::computeABIInfo(CodeGenModule &CGM, CGFunctionInfo &FI) {
 // Is swifterror lowered to a register by the target ABI.
 bool swiftcall::isSwiftErrorLoweredInRegister(CodeGenModule &CGM) {
   return getSwiftABIInfo(CGM).isSwiftErrorInRegister();
+}
+
+llvm::Value *swiftcall::lowerCXXVirtualMethodDeclReference(
+    CodeGenModule &CGM, const CXXMethodDecl *MD, llvm::Value *&thisPtr,
+    CharUnits alignment, llvm::FunctionType *type,
+    llvm::IRBuilderBase *builder) {
+  assert(MD->isVirtual());
+
+  CodeGenFunction CGF(CGM, true);
+  CGF.Builder.SetInsertPoint(builder->GetInsertBlock(),
+                             builder->GetInsertPoint());
+  Address thisAddr(thisPtr, alignment);
+  auto callee = CGCallee::forVirtual(nullptr, MD, thisAddr, type);
+  const CGCallee &concreteCallee = callee.prepareConcreteCallee(CGF);
+  Address newThisAddr =
+      CGM.getCXXABI().adjustThisArgumentForVirtualFunctionCall(CGF, MD,
+                                                               thisAddr, true);
+  thisPtr = newThisAddr.getPointer();
+  auto *result = concreteCallee.getFunctionPointer();
+  builder->SetInsertPoint(CGF.Builder.GetInsertBlock(),
+                          CGF.Builder.GetInsertPoint());
+  return result;
 }

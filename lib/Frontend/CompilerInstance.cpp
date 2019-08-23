@@ -652,6 +652,19 @@ void CompilerInstance::addOutputFile(OutputFile &&OutFile) {
 
 void CompilerInstance::clearOutputFiles(bool EraseFiles) {
   for (OutputFile &OF : OutputFiles) {
+    // SWIFT_ENABLE_TENSORFLOW
+    if (InMemoryOutputFileSystem) {
+      assert(!OF.TempFilename.empty() &&
+             "InMemoryOutputFileSystem requires using temporary files");
+      if (EraseFiles) {
+        InMemoryOutputFileSystem->DeleteTemporaryBuffer(OF.TempFilename);
+      } else {
+        InMemoryOutputFileSystem->FinalizeTemporaryBuffer(OF.Filename,
+                                                        OF.TempFilename);
+      }
+      continue;
+    }
+
     if (!OF.TempFilename.empty()) {
       if (EraseFiles) {
         llvm::sys::fs::remove(OF.TempFilename);
@@ -736,6 +749,18 @@ std::unique_ptr<llvm::raw_pwrite_stream> CompilerInstance::createOutputFile(
     OutFile = Path.str();
   } else {
     OutFile = "-";
+  }
+
+  // SWIFT_ENABLE_TENSORFLOW
+  if (InMemoryOutputFileSystem) {
+    assert(UseTemporary && "InMemoryOutputFileSystem requires using temporary files");
+    auto stream = InMemoryOutputFileSystem->CreateTemporaryBuffer(OutFile,
+                                                                &TempFile);
+    if (ResultPathName)
+      *ResultPathName = OutFile;
+    if (TempPathName)
+      *TempPathName = TempFile;
+    return stream;
   }
 
   std::unique_ptr<llvm::raw_fd_ostream> OS;
@@ -1124,6 +1149,9 @@ compileModuleImpl(CompilerInstance &ImportingInstance, SourceLocation ImportLoc,
                                    ImportingInstance.getDiagnosticClient()),
                              /*ShouldOwnClient=*/true);
 
+  // SWIFT_ENABLE_TENSORFLOW
+  Instance.setInMemoryOutputFileSystem(ImportingInstance.getInMemoryOutputFileSystem());
+
   // Note that this module is part of the module build stack, so that we
   // can detect cycles in the module graph.
   Instance.setFileManager(&ImportingInstance.getFileManager());
@@ -1272,6 +1300,33 @@ static bool compileAndLoadModule(CompilerInstance &ImportingInstance,
     Diags.Report(ModuleNameLoc, diag::err_module_not_built)
         << Module->Name << SourceRange(ImportLoc, ModuleNameLoc);
   };
+
+  // SWIFT_ENABLE_TENSORFLOW
+  // If we're writing to an InMemoryOutputFileSystem, then immediately compile
+  // and read the module, rather than doing all the lockfile based locking logic
+  // below, because the InMemoryOutputFileSystem doesn't support lockfiles. This
+  // is okay because the locks are only necessary for performance, not
+  // correctness.
+  if (ImportingInstance.getInMemoryOutputFileSystem()) {
+    if (!compileModuleImpl(ImportingInstance, ModuleNameLoc, Module,
+                           ModuleFileName)) {
+      diagnoseBuildFailure();
+      return false;
+    }
+
+    // Try to read the module file, now that we've compiled it.
+    ASTReader::ASTReadResult ReadResult =
+        ImportingInstance.getModuleManager()->ReadAST(
+            ModuleFileName, serialization::MK_ImplicitModule, ImportLoc,
+            ASTReader::ARR_None);
+
+    if (ReadResult != ASTReader::Success) {
+      diagnoseBuildFailure();
+      return false;
+    }
+
+    return true;
+  }
 
   // FIXME: have LockFileManager return an error_code so that we can
   // avoid the mkdir when the directory already exists.

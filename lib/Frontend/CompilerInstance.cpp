@@ -51,6 +51,7 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cassert>
 #include <sys/stat.h>
 #include <system_error>
 #include <time.h>
@@ -1969,10 +1970,21 @@ CompilerInstance::loadModule(SourceLocation ImportLoc,
       // this submodule.
       // FIXME: Should we detect this at module load time? It seems fairly
       // expensive (and rare).
+      llvm::errs() << "ModuleName: " << ModuleName << "\n";
+      llvm::errs() << "getLangOpts().CurrentModule: " << getLangOpts().CurrentModule << "\n";
+      Module->dump();
+      llvm::errs() << "ModuleCache: " << PP->getHeaderSearchInfo().getModuleCachePath() << "\n";
+      llvm::errs() << "SourceLocation info:\n";
+      if (ImportLoc.isValid())
+        ImportLoc.dump(PP->getSourceManager());
+      else
+        llvm::errs() << "    invalid, can't print:\n";
+
       getDiagnostics().Report(ImportLoc, diag::warn_missing_submodule)
         << Module->getFullModuleName()
         << SourceRange(Path.front().second, Path.back().second);
 
+      assert(0 && "How did it get here?");
       return ModuleLoadResult::MissingExpected;
     }
 

@@ -92,7 +92,7 @@ struct DirectoryScan {
 # define __has_include(x) 0
 #endif
 
-#if __has_include(<CoreServices/CoreServices.h>)
+#if HAS_FS_EVENTS
 # include "DirectoryWatcher-mac.inc.h"
 #elif __has_include(<sys/inotify.h>)
 # include "DirectoryWatcher-linux.inc.h"

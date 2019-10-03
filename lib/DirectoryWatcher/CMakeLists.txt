@@ -2,6 +2,8 @@ include(CheckIncludeFiles)
 
 set(LLVM_LINK_COMPONENTS support)
 
+CHECK_SYMBOL_EXISTS("FSEventStreamRef" "CoreServices/CoreServices.h" HAS_FS_EVENTS)
+
 add_clang_library(clangDirectoryWatcher
   DirectoryWatcher.cpp
   )

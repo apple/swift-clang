@@ -1,9 +1,8 @@
 //===- unittest/Tooling/RefactoringTest.cpp - Refactoring unit tests ------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -613,14 +612,15 @@ public:
     llvm::raw_fd_ostream OutStream(FD, true);
     OutStream << Content;
     OutStream.close();
-    const FileEntry *File = Context.Files.getFile(Path);
-    assert(File != nullptr);
+    auto File = Context.Files.getFile(Path);
+    assert(File);
 
     StringRef Found =
         TemporaryFiles.insert(std::make_pair(Name, Path.str())).first->second;
     assert(Found == Path);
     (void)Found;
-    return Context.Sources.createFileID(File, SourceLocation(), SrcMgr::C_User);
+    return Context.Sources.createFileID(*File, SourceLocation(),
+                                        SrcMgr::C_User);
   }
 
   std::string getFileContentFromDisk(llvm::StringRef Name) {
@@ -1172,11 +1172,11 @@ TEST_F(AtomicChangeTest, AtomicChangeToYAML) {
                "Key:             'input.cpp:20'\n"
                "FilePath:        input.cpp\n"
                "Error:           ''\n"
-               "InsertedHeaders: \n" // Extra whitespace here!
+               "InsertedHeaders:\n"
                "  - a.h\n"
-               "RemovedHeaders:  \n" // Extra whitespace here!
+               "RemovedHeaders:\n"
                "  - b.h\n"
-               "Replacements:    \n" // Extra whitespace here!
+               "Replacements:\n"
                "  - FilePath:        input.cpp\n"
                "    Offset:          20\n"
                "    Length:          0\n"
@@ -1194,11 +1194,11 @@ TEST_F(AtomicChangeTest, YAMLToAtomicChange) {
                             "Key:             'input.cpp:20'\n"
                             "FilePath:        input.cpp\n"
                             "Error:           'ok'\n"
-                            "InsertedHeaders: \n" // Extra whitespace here!
+                            "InsertedHeaders:\n"
                             "  - a.h\n"
-                            "RemovedHeaders:  \n" // Extra whitespace here!
+                            "RemovedHeaders:\n"
                             "  - b.h\n"
-                            "Replacements:    \n" // Extra whitespace here!
+                            "Replacements:\n"
                             "  - FilePath:        input.cpp\n"
                             "    Offset:          20\n"
                             "    Length:          0\n"

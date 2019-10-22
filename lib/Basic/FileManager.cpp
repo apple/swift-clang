@@ -275,7 +275,10 @@ FileManager::getFileRef(StringRef Filename, bool openFile, bool CacheFailure) {
     // In addition to re-interning the name, construct a redirecting seen file
     // entry, that will point to the name the filesystem actually wants to use.
     StringRef *Redirect = new (CanonicalNameStorage) StringRef(InterndFileName);
-    SeenFileInsertResult.first->second = Redirect;
+    auto SeenFileInsertResultIt = SeenFileEntries.find(Filename);
+    assert(SeenFileInsertResultIt != SeenFileEntries.end() &&
+           "unexpected SeenFileEntries cache miss");
+    SeenFileInsertResultIt->second = Redirect;
   }
 
   if (UFE.isValid()) { // Already have an entry with this inode, return it.

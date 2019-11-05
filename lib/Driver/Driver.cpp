@@ -1382,7 +1382,7 @@ void Driver::generateCompilationDiagnostics(
   // Assume associated files are based off of the first temporary file.
   CrashReportInfo CrashInfo(
       TempFiles[0], VFS,
-      C.getArgs().getLastArgValue(options::OPT_index_store_path));
+      llvm::is_contained(Cmd.getArguments(), StringRef("-index-store-path")));
 
   llvm::SmallString<128> Script(CrashInfo.Filename);
   llvm::sys::path::replace_extension(Script, "sh");

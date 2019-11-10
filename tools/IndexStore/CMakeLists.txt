@@ -49,6 +49,10 @@ if(APPLE)
 
   set_property(TARGET IndexStore APPEND_STRING PROPERTY
                LINK_FLAGS ${INDEXSTORE_LINK_FLAGS})
+else()
+  # Blocks are off by default on non-darwin platforms.
+  target_compile_options(IndexStore PRIVATE -fblocks)
+  target_link_libraries(IndexStore PRIVATE BlocksRuntime)
 endif()
 
 if (LLVM_INSTALL_TOOLCHAIN_ONLY)

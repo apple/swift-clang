@@ -22,14 +22,18 @@
 namespace llvm {
   class IntegerType;
   class Type;
+  class Value;
   class StructType;
   class VectorType;
+  class FunctionType;
+  class IRBuilderBase;
 }
 
 namespace clang {
 class Decl;
 class FieldDecl;
 class ASTRecordLayout;
+class CXXMethodDecl;
 
 namespace CodeGen {
 class ABIArgInfo;
@@ -176,6 +180,14 @@ void computeABIInfo(CodeGenModule &CGM, CGFunctionInfo &FI);
 
 /// Is swifterror lowered to a register by the target ABI?
 bool isSwiftErrorLoweredInRegister(CodeGenModule &CGM);
+
+/// Lookup a virtual method `MD` from the vtable and adjusts the this ptr.
+llvm::Value *lowerCXXVirtualMethodDeclReference(CodeGenModule &CGM,
+                                                const CXXMethodDecl *MD,
+                                                llvm::Value *&thisPtr,
+                                                CharUnits alignment,
+                                                llvm::FunctionType *type,
+                                                llvm::IRBuilderBase *builder);
 
 } // end namespace swiftcall
 } // end namespace CodeGen

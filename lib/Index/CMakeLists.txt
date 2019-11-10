@@ -13,7 +13,6 @@ add_clang_library(clangIndex
   IndexDecl.cpp
   IndexingAction.cpp
   IndexingContext.cpp
-  IndexRecordHasher.cpp
   IndexRecordReader.cpp
   IndexRecordWriter.cpp
   IndexSymbol.cpp
@@ -35,4 +34,7 @@ add_clang_library(clangIndex
   clangRewrite
   clangSerialization
   clangToolingCore
+  clangIndexRecordHasher
   )
+
+add_subdirectory(RecordHasher)

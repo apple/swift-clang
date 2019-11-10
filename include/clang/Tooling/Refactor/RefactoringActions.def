@@ -32,7 +32,7 @@ REFACTORING_SUB_ACTION(Local, Rename, "Rename")
 REFACTORING_OPERATION_ACTION(Extract, "Extract Function", "extract")
 REFACTORING_OPERATION_SUB_ACTION(Method, Extract, "Extract Method",
                                  "extract-method")
-REFACTORING_OPERATION_SUB_ACTION(Expression, Extract, "Extract Expression",
+REFACTORING_OPERATION_SUB_ACTION(Expression, Extract, "Extract Variable",
                                  "extract-expression")
 
 REFACTORING_OPERATION_ACTION(IfSwitchConversion, "Convert to Switch",
@@ -46,7 +46,7 @@ REFACTORING_OPERATION_ACTION(LocalizeObjCStringLiteral,
                              "Wrap in NSLocalizedString",
                              "localize-objc-string-literal")
 REFACTORING_OPERATION_ACTION(ExtractRepeatedExpressionIntoVariable,
-                             "Extract Repeated Expression",
+                             "Extract All Occurrences",
                              "extract-repeated-expr-into-var")
 REFACTORING_OPERATION_ACTION(FillInMissingMethodStubsFromAbstractClasses,
                              "Add Missing Abstract Class Overrides",

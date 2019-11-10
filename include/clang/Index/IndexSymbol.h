@@ -93,6 +93,7 @@ enum class SymbolSubKind : uint8_t {
   SwiftPostfixOperator,
   SwiftInfixOperator,
 
+  SwiftCall,
   SwiftSubscript,
   SwiftAssociatedType,
   SwiftGenericTypeParam,
